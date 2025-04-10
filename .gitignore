@@ -1,0 +1,21 @@
+# 環境変数
+.env
+
+# ユーザーデータ
+data/users.json
+data/history.csv
+data/faq_with_embeddings.pkl
+
+# キャッシュと一時ファイル
+__pycache__/
+*.py[cod]
+*$py.class
+.streamlit/
+.ipynb_checkpoints
+
+# システムファイル
+.DS_Store
+Thumbs.db
+
+# venvを無視
+myenv/
