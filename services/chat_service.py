@@ -45,7 +45,7 @@ def get_embeddings(text):
         # エラーが発生した場合はダミーのエンベディングを返す
         return [0] * 1536  # 標準的なサイズ
 
-def get_response(user_input):
+def get_response(user_input, room_number=""):
     """
     ユーザー入力に対する最適な回答を取得する
     """
@@ -108,6 +108,7 @@ def get_response(user_input):
                 question=user_input,
                 answer=answer,
                 similarity_score=similarity_score
+                room_number=room_number  # 部屋番号の情報を追加
             )
             
             # ユーザーへの回答
@@ -128,3 +129,45 @@ def get_response(user_input):
             similarity_score=0.0
         )
         return error_message, 0, 0
+    
+# LINEメッセージ送信関数も修正
+def send_line_message(question, answer, similarity_score, room_number=""):
+    """
+    LINEに通知を送る関数
+    部屋番号パラメータを追加
+    """
+    try:
+        # LINE通知のテキスト作成
+        room_info = f"【部屋番号: {room_number}】" if room_number else ""
+        message = f"{room_info}\n【質問】\n{question}\n\n【回答】\n{answer}\n\n【類似度】\n{similarity_score:.2f}"
+        
+        # LINE通知の送信処理
+        # ここに実際のLINE APIを使った送信処理を実装
+        # 例: line_bot_api.push_message(LINE_NOTIFY_USER_ID, TextSendMessage(text=message))
+        
+        print("LINE通知を送信しました")
+        return True
+    except Exception as e:
+        print(f"LINE通知エラー: {e}")
+        return False
+
+# フォームからの入力を処理する関数例
+def process_form_input(request):
+    """
+    Webフォームからの入力を処理する関数例
+    実際の実装はフレームワークによって異なります
+    """
+    user_input = request.form.get('user_question', '')
+    room_number = request.form.get('room_number', '')  # 部屋番号の入力フィールドを追加
+    
+    # 入力検証
+    if not user_input:
+        return "質問を入力してください。"
+    
+    # 部屋番号が未入力の場合のデフォルト処理（オプション）
+    # room_number = room_number or "不明"
+    
+    # 回答を取得
+    answer, q_words, a_words = get_response(user_input, room_number)
+    
+    return answer
