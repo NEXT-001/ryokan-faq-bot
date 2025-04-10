@@ -107,7 +107,7 @@ def get_response(user_input, room_number=""):
             send_line_message(
                 question=user_input,
                 answer=answer,
-                similarity_score=similarity_score
+                similarity_score=similarity_score,
                 room_number=room_number  # 部屋番号の情報を追加
             )
             
