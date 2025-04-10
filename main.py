@@ -195,8 +195,14 @@ def customer_chat(is_preview=False):
         # 入力欄もクリア（session_stateから削除）
         if "user_input" in st.session_state:
             st.session_state.user_input = ""
+        # 部屋番号入力欄もクリア
+        if "room_number" in st.session_state:
+            st.session_state.room_number = ""
         st.success("会話履歴をクリアしました！")
         st.experimental_rerun()  # 確実に再読み込み
+    
+    # 部屋番号入力欄を追加
+    room_number = st.text_input("部屋番号：", key="room_number", placeholder="例: 101")
     
     # ユーザー入力
     user_input = st.text_input("ご質問をどうぞ：", key="user_input")
@@ -204,20 +210,26 @@ def customer_chat(is_preview=False):
     if user_input:
         with st.spinner("回答を生成中..."):
             # 回答を取得
-            response, input_tokens, output_tokens = get_response(user_input)
+            response, input_tokens, output_tokens = get_response(user_input, room_number)
             
-            # 会話履歴に追加
-            st.session_state.conversation_history.append({"question": user_input, "answer": response})
+            # 会話履歴に追加（部屋番号も含める）
+            st.session_state.conversation_history.append({
+                "room_number": room_number,
+                "question": user_input, 
+                "answer": response
+            })
             
             # ログに保存（プレビューモードではログを記録しない）
             if not is_preview:
-                log_interaction(user_input, response, input_tokens, output_tokens)
+                log_interaction(user_input, response, input_tokens, output_tokens, room_number)
     
     # 会話履歴の表示
     if st.session_state.conversation_history:
         st.subheader("会話履歴")
         for i, exchange in enumerate(st.session_state.conversation_history[-5:]):  # 直近5件のみ表示
             with st.container():
+                room_info = f"**部屋番号:** {exchange.get('room_number', '未入力')}"
+                st.markdown(room_info)
                 st.markdown(f"**質問 {i+1}:** {exchange['question']}")
                 st.markdown(f"**回答 {i+1}:** {exchange['answer']}")
                 st.markdown("---")

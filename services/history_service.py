@@ -5,9 +5,11 @@ import os
 
 HISTORY_FILE = "data/history.csv"
 
-def log_interaction(question, answer, input_tokens, output_tokens):
+# ログ記録関数も部屋番号に対応させる
+def log_interaction(question, answer, input_tokens, output_tokens, room_number=""):
     """
     ユーザーとの対話をCSVファイルに記録する
+    部屋番号情報を追加
     """
     # data ディレクトリが存在しない場合は作成
     if not os.path.exists("data"):
@@ -16,6 +18,7 @@ def log_interaction(question, answer, input_tokens, output_tokens):
     # 記録用のデータフレームを作成
     df = pd.DataFrame([{
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "room_number": room_number,  # 部屋番号を追加
         "question": question,
         "answer": answer,
         "input_tokens": input_tokens,
