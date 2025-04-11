@@ -10,7 +10,7 @@ data/faq_with_embeddings.pkl
 __pycache__/
 *.py[cod]
 *$py.class
-.streamlit/
+.streamlit/secrets.toml
 .ipynb_checkpoints
 
 # システムファイル

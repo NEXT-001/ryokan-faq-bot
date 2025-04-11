@@ -117,7 +117,7 @@ def create_embeddings():
     for question in df["question"]:
         try:
             response = client.embeddings.create(
-                model="claude-3-sonnet-20240229",
+                model="claude-3-haiku-20240307",
                 input=question
             )
             embeddings.append(response.embedding)
