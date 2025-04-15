@@ -3,7 +3,8 @@ import os
 from services.chat_service import get_response
 from services.history_service import log_interaction, show_history
 from services.login_service import verify_user, is_admin, user_management_page
-from admin_line_settings import line_settings_page
+from admin_line_settings import line_settings
+from admin_faq_management import faq_management_page  # 新たに追加したFAQ管理ページをインポート
 from config.settings import load_api_key, is_test_mode
 from dotenv import load_dotenv
 
@@ -29,9 +30,9 @@ if 'page' not in st.session_state:
     st.session_state.page = "customer"  # デフォルトはお客様用ページ
 
 # テストモード状態の確認
-test_mode = is_test_mode()
-print(f"TEST_MODE環境変数: {os.getenv('TEST_MODE', 'false')}")
-print(f"設定されたTEST_MODE値: {test_mode}")
+# test_mode = is_test_mode()
+# print(f"TEST_MODE環境変数: {os.getenv('TEST_MODE', 'false')}")
+# print(f"設定されたTEST_MODE値: {test_mode}")
 
 # APIキーのロード
 try:
@@ -99,10 +100,10 @@ def admin_dashboard():
     with st.sidebar:
         st.header(f"ようこそ、{st.session_state.username}さん")
         
-        # メニュー
+        # メニュー - FAQ管理を追加
         admin_page = st.radio(
             "管理メニュー",
-            ["FAQ履歴", "ユーザー管理", "LINE通知設定", "FAQチャットプレビュー"]
+            ["FAQ管理", "FAQ履歴", "ユーザー管理", "LINE通知設定", "FAQチャットプレビュー"]
         )
         
         # テストモード切り替え
@@ -127,13 +128,16 @@ def admin_dashboard():
             st.rerun()
     
     # 選択したページを表示
-    if admin_page == "FAQ履歴":
+    if admin_page == "FAQ管理":
+        # FAQ管理ページを表示
+        faq_management_page()
+    elif admin_page == "FAQ履歴":
         st.header("FAQ利用履歴")
         show_history()
     elif admin_page == "ユーザー管理":
         user_management_page()
     elif admin_page == "LINE通知設定":
-        line_settings_page()
+        line_settings()
     elif admin_page == "FAQチャットプレビュー":
         customer_chat(is_preview=True)
 

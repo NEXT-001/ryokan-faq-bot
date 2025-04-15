@@ -1,8 +1,8 @@
 import streamlit as st
 import os
-from services.line_bot_service import send_line_message
+from services.line_service import send_line_message
 
-def line_settings_page():
+def line_settings():
     """
     LINE設定ページ
     """

@@ -3,14 +3,23 @@ import streamlit as st
 from dotenv import load_dotenv
 import anthropic
 
+# .envファイルを読み込む
+load_dotenv()
+
 def is_test_mode():
     """
     アプリケーションがテストモードで実行されているかどうかを確認する
     .env ファイルまたは環境変数から判断
     """
     # 明示的に設定されたテストモード値を取得
-    test_mode = os.getenv("TEST_MODE", "false").lower() == "true"
-    return test_mode
+    test_mode = os.getenv("TEST_MODE", "false").lower()
+    print(f"TEST_MODE環境変数: {test_mode}")
+    
+    # 文字列の比較を修正（大文字小文字を無視し、"true"という文字列かどうか）
+    is_test = test_mode == "true"
+    print(f"設定されたTEST_MODE値: {is_test}")
+    
+    return is_test
 
 def load_api_key():
     """

@@ -19,3 +19,5 @@ Thumbs.db
 
 # venvを無視
 myenv/
+
+./devcontainer

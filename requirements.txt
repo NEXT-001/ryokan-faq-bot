@@ -6,3 +6,5 @@ anthropic>=0.18.1
 python-dotenv==1.0.0
 line-bot-sdk>=3.5.0,<4.0.0
 requests==2.31.0
+matplotlib==3.8.2
+seaborn==0.13.0
