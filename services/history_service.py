@@ -3,19 +3,31 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
+from config.settings import get_data_path
 
-HISTORY_FILE = "data/history.csv"
-
-# ログ記録関数も部屋番号に対応させる
-def log_interaction(question, answer, input_tokens, output_tokens, room_number=""):
+def log_interaction(question, answer, input_tokens, output_tokens, company_id=None, user_info=""):
     """
     ユーザーとの対話をCSVファイルに記録する
-    部屋番号情報を追加
-    改行を処理して安全に保存
+    
+    Args:
+        question (str): ユーザーからの質問
+        answer (str): システムからの回答
+        input_tokens (int): 入力トークン数
+        output_tokens (int): 出力トークン数
+        company_id (str, optional): 会社ID（指定がない場合はデモ企業）
+        user_info (str, optional): ユーザー情報（例: 部屋番号）
     """
-    # data ディレクトリが存在しない場合は作成
-    if not os.path.exists("data"):
-        os.makedirs("data")
+    # 会社IDが指定されていない場合はデモ企業を使用
+    if not company_id:
+        company_id = "demo-company"
+    
+    # 会社のデータディレクトリを取得
+    company_dir = os.path.join(get_data_path(), "companies", company_id)
+    if not os.path.exists(company_dir):
+        os.makedirs(company_dir)
+    
+    # 履歴ファイルのパス
+    history_file = os.path.join(company_dir, "history.csv")
     
     # 改行を含む可能性のあるテキストから改行を削除
     def sanitize_text(text):
@@ -27,7 +39,7 @@ def log_interaction(question, answer, input_tokens, output_tokens, room_number="
     # 記録用のデータフレームを作成
     df = pd.DataFrame([{
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "room_number": sanitize_text(room_number),  # 部屋番号を追加
+        "user_info": sanitize_text(user_info),
         "question": sanitize_text(question),
         "answer": sanitize_text(answer),
         "input_tokens": input_tokens,
@@ -35,69 +47,48 @@ def log_interaction(question, answer, input_tokens, output_tokens, room_number="
     }])
     
     # CSVファイルに保存
-    file_exists = os.path.exists(HISTORY_FILE)
+    file_exists = os.path.exists(history_file)
     
     try:
         # 改行文字の削除に加えて、CSVライブラリを使って適切に引用符処理
         if not file_exists:
-            df.to_csv(HISTORY_FILE, index=False, quoting=1)  # quoting=1 は csv.QUOTE_ALL と同等
+            df.to_csv(history_file, index=False, quoting=1)  # quoting=1 は csv.QUOTE_ALL と同等
         else:
-            df.to_csv(HISTORY_FILE, mode='a', header=False, index=False, quoting=1)
+            df.to_csv(history_file, mode='a', header=False, index=False, quoting=1)
         
-        print(f"対話を記録しました: {HISTORY_FILE}")
+        print(f"対話を記録しました: {history_file}")
     except Exception as e:
         print(f"対話記録エラー: {e}")
 
-def show_history():
+def show_history(company_id=None):
     """
     保存された対話履歴を表示する
+    
+    Args:
+        company_id (str, optional): 会社ID（指定がない場合はデモ企業）
     """
-    if os.path.exists(HISTORY_FILE):
+    # 会社IDが指定されていない場合はデモ企業を使用
+    if not company_id:
+        company_id = "demo-company"
+    
+    # 会社の履歴ファイルのパス
+    history_file = os.path.join(get_data_path(), "companies", company_id, "history.csv")
+    
+    if os.path.exists(history_file):
         try:
-            # カスタムCSV読み込み - パースエラーに対処
-            import csv
-            
-            # 手動でCSVを読み込み
-            with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # データを前処理 - 行の終わりが正しいか確認
-            processed_content = []
-            in_quotes = False
-            current_line = ""
-            
-            for char in content:
-                if char == '"':
-                    in_quotes = not in_quotes
-                
-                current_line += char
-                
-                # 引用符の外で改行に達した場合、それは実際の行区切り
-                if char == '\n' and not in_quotes:
-                    processed_content.append(current_line.strip())
-                    current_line = ""
-            
-            # 最後の行があれば追加
-            if current_line:
-                processed_content.append(current_line.strip())
-            
-            # リストからCSVを読み込む
-            from io import StringIO
-            csv_data = StringIO('\n'.join(processed_content))
-            
-            # カラム名を明示的に指定
-            columns = ["timestamp", "room_number", "question", "answer", "input_tokens", "output_tokens"]
-            df = pd.read_csv(csv_data, names=columns, quotechar='"', escapechar='\\')
+            # 履歴データを読み込む
+            df = pd.read_csv(history_file)
             
             if len(df) > 0:
                 st.subheader("FAQ利用履歴")
-                # 部屋番号も表示するように変更
-                for i, row in df.iterrows():
+                
+                # 履歴の表示（最新の20件まで）
+                for i, row in df.tail(20).iterrows():
                     st.write(f"**日時:** {row['timestamp']}")
                     
-                    # 部屋番号があれば表示
-                    if 'room_number' in row and pd.notna(row['room_number']) and row['room_number']:
-                        st.write(f"**部屋番号:** {row['room_number']}")
+                    # ユーザー情報があれば表示
+                    if 'user_info' in row and pd.notna(row['user_info']) and row['user_info']:
+                        st.write(f"**ユーザー情報:** {row['user_info']}")
                     
                     st.write(f"**質問:** {row['question']}")
                     st.write(f"**回答:** {row['answer']}")
@@ -111,8 +102,5 @@ def show_history():
                 st.info("履歴は空です")
         except Exception as e:
             st.error(f"履歴の読み込みエラー: {str(e)}")
-            # デバッグ情報を表示（開発中のみ使用し、本番では削除してください）
-            import traceback
-            st.error(traceback.format_exc())
     else:
         st.info("まだ履歴がありません")

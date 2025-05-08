@@ -1,136 +1,183 @@
 # login_service.py
 import streamlit as st
-import os
-import json
-import hashlib
 import pandas as pd
 from datetime import datetime
+from services.company_service import (
+    load_companies, 
+    save_companies, 
+    verify_company_admin, 
+    add_admin,
+    hash_password
+)
 
-# ユーザー情報ファイルのパス
-USERS_FILE = "data/users.json"
+def login_user(company_id, username, password):
+    """
+    ユーザーログイン処理
+    
+    Args:
+        company_id (str): 会社ID
+        username (str): ユーザー名
+        password (str): パスワード
+        
+    Returns:
+        tuple: (成功したかどうか, メッセージ)
+    """
+    # テストモードの場合はスーパー管理者ログイン
+    from config.settings import is_test_mode
+    if is_test_mode() and company_id == "admin" and username == "admin" and password == "admin":
+        st.session_state.is_logged_in = True
+        st.session_state.is_super_admin = True
+        st.session_state.company_id = None
+        st.session_state.company_name = "スーパー管理者"
+        st.session_state.username = username
+        return True, "スーパー管理者としてログインしました"
+    
+    # 企業管理者の認証
+    success, message = verify_company_admin(company_id, username, password)
+    
+    if success:
+        # セッション情報の保存
+        st.session_state.is_logged_in = True
+        st.session_state.is_super_admin = False
+        st.session_state.company_id = company_id
+        st.session_state.company_name = message  # 会社名
+        st.session_state.username = username
+        return True, f"{message}の管理者としてログインしました"
+    
+    return False, message
 
-def hash_password(password):
-    """パスワードをハッシュ化する"""
-    return hashlib.sha256(password.encode()).hexdigest()
+def logout_user():
+    """
+    ユーザーログアウト処理
+    """
+    # セッション情報の削除
+    if "is_logged_in" in st.session_state:
+        del st.session_state.is_logged_in
+    if "is_super_admin" in st.session_state:
+        del st.session_state.is_super_admin
+    if "company_id" in st.session_state:
+        del st.session_state.company_id
+    if "company_name" in st.session_state:
+        del st.session_state.company_name
+    if "username" in st.session_state:
+        del st.session_state.username
+    
+    return True, "ログアウトしました"
 
-def load_users():
-    """ユーザー情報を読み込む"""
-    if not os.path.exists("data"):
-        os.makedirs("data")
+def is_logged_in():
+    """
+    ログイン状態かどうかを確認
     
-    if not os.path.exists(USERS_FILE):
-        # デフォルト管理者アカウントを作成
-        default_admin = {
-            "admin": {
-                "password": hash_password("admin123"),
-                "role": "admin",
-                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-        }
-        with open(USERS_FILE, 'w') as f:
-            json.dump(default_admin, f)
-    
-    with open(USERS_FILE, 'r') as f:
-        return json.load(f)
+    Returns:
+        bool: ログイン状態ならTrue
+    """
+    return "is_logged_in" in st.session_state and st.session_state.is_logged_in
 
-def save_users(users):
-    """ユーザー情報を保存する"""
-    with open(USERS_FILE, 'w') as f:
-        json.dump(users, f)
+def is_super_admin():
+    """
+    スーパー管理者かどうかを確認
+    
+    Returns:
+        bool: スーパー管理者ならTrue
+    """
+    return is_logged_in() and "is_super_admin" in st.session_state and st.session_state.is_super_admin
 
-def add_user(username, password, role="admin"):
-    """新しいユーザーを追加する（管理者のみ追加可能）"""
-    users = load_users()
+def get_current_company_id():
+    """
+    現在ログイン中の会社IDを取得
     
-    if username in users:
-        return False, "このユーザー名は既に使用されています"
-    
-    users[username] = {
-        "password": hash_password(password),
-        "role": role,
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    
-    save_users(users)
-    return True, "ユーザーを追加しました"
+    Returns:
+        str: 会社ID
+    """
+    if is_logged_in() and "company_id" in st.session_state:
+        return st.session_state.company_id
+    return None
 
-def verify_user(username, password):
-    """ユーザーの認証を行う"""
-    users = load_users()
-    
-    if username not in users:
-        return False, "ユーザー名が見つかりません"
-    
-    if users[username]["password"] != hash_password(password):
-        return False, "パスワードが間違っています"
-    
-    return True, users[username]["role"]
-
-def is_admin():
-    """現在のユーザーが管理者かどうかを確認する"""
-    if "user_role" in st.session_state:
-        return st.session_state.user_role == "admin"
-    return False
-
-def user_management_page():
-    """ユーザー管理ページを表示する（管理者のみ）"""
-    if not is_admin():
-        st.warning("この機能にアクセスする権限がありません")
-        return
-    
+def admin_management_page():
+    """
+    管理者アカウント管理ページ（会社管理者用）
+    """
     st.header("管理者アカウント管理")
     
-    # ユーザー一覧を表示
-    users = load_users()
-    user_data = []
-    for username, details in users.items():
-        if details["role"] == "admin":  # 管理者のみ表示
-            user_data.append({
-                "ユーザー名": username,
-                "作成日時": details["created_at"]
-            })
+    # スーパー管理者の場合は全社表示
+    if is_super_admin():
+        st.warning("スーパー管理者モードでは、この機能は使用できません")
+        return
     
-    if user_data:
-        st.dataframe(pd.DataFrame(user_data))
+    # 会社情報の取得
+    company_id = get_current_company_id()
+    if not company_id:
+        st.error("会社情報が見つかりません")
+        return
+    
+    companies = load_companies()
+    if company_id not in companies:
+        st.error("会社情報が見つかりません")
+        return
+    
+    # 管理者一覧を表示
+    st.subheader("管理者一覧")
+    
+    admin_data = []
+    for username, admin_info in companies[company_id]["admins"].items():
+        admin_data.append({
+            "ユーザー名": username,
+            "メールアドレス": admin_info.get("email", ""),
+            "作成日時": admin_info.get("created_at", "")
+        })
+    
+    if admin_data:
+        st.dataframe(pd.DataFrame(admin_data))
     else:
         st.info("管理者アカウントがありません")
     
     # 新規管理者追加フォーム
     st.subheader("新規管理者追加")
-    with st.form("add_user_form"):
+    with st.form("add_admin_form"):
         new_username = st.text_input("ユーザー名")
         new_password = st.text_input("パスワード", type="password")
+        new_email = st.text_input("メールアドレス")
         submit = st.form_submit_button("管理者を追加")
         
         if submit:
             if not new_username or not new_password:
                 st.error("ユーザー名とパスワードを入力してください")
             else:
-                success, message = add_user(new_username, new_password, "admin")
+                success, message = add_admin(company_id, new_username, new_password, new_email)
                 if success:
                     st.success(message)
+                    st.rerun()
                 else:
                     st.error(message)
     
     # 管理者アカウント削除機能
     st.subheader("管理者アカウント削除")
-    with st.form("delete_user_form"):
+    
+    # 自分以外の管理者を取得
+    current_username = st.session_state.username
+    other_admins = [username for username in companies[company_id]["admins"] if username != current_username]
+    
+    if not other_admins:
+        st.info("削除可能な管理者アカウントがありません")
+        return
+    
+    with st.form("delete_admin_form"):
         username_to_delete = st.selectbox(
-            "削除するユーザー", 
-            [username for username, details in users.items() 
-             if details["role"] == "admin" and username != st.session_state.username]
+            "削除する管理者", 
+            other_admins
         )
         
         delete_submit = st.form_submit_button("削除")
         
         if delete_submit and username_to_delete:
             # 最後の管理者アカウントは削除できないようにする
-            admin_count = sum(1 for details in users.values() if details["role"] == "admin")
+            admin_count = len(companies[company_id]["admins"])
             
             if admin_count <= 1:
                 st.error("最後の管理者アカウントは削除できません")
             else:
-                del users[username_to_delete]
-                save_users(users)
-                st.success(f"ユーザー '{username_to_delete}' を削除しました")
+                # 管理者を削除
+                del companies[company_id]["admins"][username_to_delete]
+                save_companies(companies)
+                st.success(f"管理者 '{username_to_delete}' を削除しました")
                 st.rerun()
