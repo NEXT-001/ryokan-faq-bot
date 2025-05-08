@@ -1,5 +1,6 @@
 """
 テストモードを強制的に有効化するスクリプト
+force_test_mode.py
 """
 import os
 import sys

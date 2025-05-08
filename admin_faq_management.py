@@ -1,5 +1,6 @@
 """
 FAQ管理機能 - 管理者がFAQを追加・編集・削除するための機能
+admin_faq_management.py
 """
 import os
 import pandas as pd

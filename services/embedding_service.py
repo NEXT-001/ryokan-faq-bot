@@ -1,5 +1,6 @@
 """
 エンベディング関連の共通サービス
+embedding_service.py
 """
 import os
 import pandas as pd

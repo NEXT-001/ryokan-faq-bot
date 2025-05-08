@@ -1,6 +1,7 @@
 """
 デバッグ用の簡易Webアプリケーション
 Streamlitを使って、FAQシステムをデバッグするためのインターフェースを提供
+debug_app.py
 """
 import streamlit as st
 import os

@@ -1,5 +1,6 @@
 """
 デバッグ用の関数
+debug_functions.py
 """
 import os
 import pandas as pd
