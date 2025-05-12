@@ -1,6 +1,7 @@
 """
 LINE メッセージング機能の統合サービス
 LINE Bot SDK とダイレクト API 両方の実装をサポート
+line_service.py
 """
 import os
 import requests

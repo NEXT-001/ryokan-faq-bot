@@ -1,7 +1,9 @@
+# settings.py
 import os
 import streamlit as st
 from dotenv import load_dotenv
 import anthropic
+import json
 
 # .envファイルを読み込む
 load_dotenv()
@@ -13,11 +15,9 @@ def is_test_mode():
     """
     # 明示的に設定されたテストモード値を取得
     test_mode = os.getenv("TEST_MODE", "false").lower()
-    print(f"TEST_MODE環境変数: {test_mode}")
     
     # 文字列の比較を修正（大文字小文字を無視し、"true"という文字列かどうか）
     is_test = test_mode == "true"
-    print(f"設定されたTEST_MODE値: {is_test}")
     
     return is_test
 
@@ -62,3 +62,33 @@ def load_api_key():
         print(f"Anthropicクライアント作成エラー: {e}")
         os.environ["TEST_MODE"] = "true"
         return None
+
+def get_data_path(company_id=None):
+    """
+    会社IDに基づいたデータディレクトリのパスを取得する
+    
+    Args:
+        company_id (str, optional): 会社ID。指定されない場合は共通データディレクトリを返す
+        
+    Returns:
+        str: データディレクトリのパス
+    """
+    # 基本データディレクトリ
+    base_path = "data"
+    
+    # データディレクトリが存在しない場合は作成
+    if not os.path.exists(base_path):
+        os.makedirs(base_path)
+    
+    # 会社別データディレクトリ
+    if company_id:
+        company_path = os.path.join(base_path, "companies", company_id)
+        
+        # 会社別ディレクトリが存在しない場合は作成
+        if not os.path.exists(company_path):
+            os.makedirs(company_path)
+            
+        return company_path
+    
+    # 共通データディレクトリ
+    return base_path
