@@ -7,10 +7,15 @@ import pandas as pd
 import numpy as np
 import hashlib
 import voyageai
+import time
 from config.settings import is_test_mode, get_data_path
 
 # エンベディングの次元数 (テストモードでは1024次元を想定)
 EMBEDDING_DIM = 1024
+# API呼び出しの最大リトライ回数
+MAX_RETRIES = 3
+# リトライ間の待機時間（秒）
+RETRY_DELAY = 20
 
 def load_voyage_client():
     """
@@ -93,6 +98,13 @@ def get_embedding(text, client=None):
     """
     テキストのエンベディングを取得する
     テストモードの場合はダミーのエンベディング、それ以外はVoyageAI API経由で取得
+    
+    Args:
+        text (str): エンベディングを取得するテキスト
+        client (voyageai.Client, optional): VoyageAI APIクライアント
+        
+    Returns:
+        list: エンベディングベクトル
     """
     # テストモードの場合
     if is_test_mode():
@@ -107,23 +119,37 @@ def get_embedding(text, client=None):
         print("VoyageAI APIキーの読み込みに失敗しました。テストモードのエンベディングを返します。")
         return get_test_embedding(text)
     
-    try:
-        # VoyageAI API経由でエンベディングを取得
-        result = client.embed(
-            [text],  # リストとして渡す（単一のテキストでもリストに入れる）
-            model="voyage-3",
-            input_type="document"
-        )
-        
-        # レスポンスからエンベディングを取得
-        embedding = result.embeddings[0]  # 最初の要素を取得
-        
-        print(f"VoyageAIエンベディング取得成功: {len(embedding)}次元")
-        return embedding
-    except Exception as e:
-        print(f"VoyageAIエンベディング取得エラー: {e}")
-        # エラー発生時はテスト用エンベディングを返す
-        return get_test_embedding(text)
+    # API呼び出しをリトライする
+    for attempt in range(MAX_RETRIES):
+        try:
+            # VoyageAI API経由でエンベディングを取得
+            result = client.embed(
+                [text],  # リストとして渡す（単一のテキストでもリストに入れる）
+                model="voyage-3",
+                input_type="document"
+            )
+            
+            # レスポンスからエンベディングを取得
+            embedding = result.embeddings[0]  # 最初の要素を取得
+            
+            print(f"VoyageAIエンベディング取得成功: {len(embedding)}次元")
+            return embedding
+            
+        except Exception as e:
+            print(f"VoyageAIエンベディング取得エラー (試行 {attempt+1}/{MAX_RETRIES}): {e}")
+            
+            # レート制限エラーの場合は待機してリトライ
+            if "rate limit" in str(e).lower() or "your rate limits" in str(e).lower():
+                print(f"{RETRY_DELAY}秒待機してリトライします...")
+                time.sleep(RETRY_DELAY)
+            else:
+                # その他のエラーの場合はリトライせずにテストモードに切り替え
+                print("テストモードのエンベディングを返します。")
+                return get_test_embedding(text)
+    
+    # リトライ回数を超えた場合はテストモードのエンベディングを返す
+    print(f"リトライ回数（{MAX_RETRIES}回）を超えました。テストモードのエンベディングを返します。")
+    return get_test_embedding(text)
 
 def create_embeddings(company_id):
     """
@@ -151,10 +177,31 @@ def create_embeddings(company_id):
         print(f"CSVファイルの読み込みエラー: {e}")
         return False
     
+    # 一時的にテストモードをチェック
+    original_test_mode = is_test_mode()
+    # テストモードが明示的に設定されていない場合、または
+    # ユーザーからのリクエストでテストモードが指定されていない場合は
+    # VoyageAI APIが利用できるかどうかを確認
+    
+    print(f"現在のテストモード: {original_test_mode}")
+    
     # VoyageAI APIクライアントを初期化
     client = None
-    if not is_test_mode():
+    if not original_test_mode:
         client = load_voyage_client()
+        
+        # テスト呼び出しを行い、API呼び出しが成功するか確認
+        try:
+            print("API接続テスト中...")
+            # テスト呼び出しのためのダミーテキスト
+            dummy_text = "テスト文章"
+            test_embedding = get_embedding(dummy_text, client)
+            print("API接続テスト成功")
+        except Exception as e:
+            print(f"API接続テスト失敗: {e}")
+            print("エンベディング生成をテストモードに切り替えます")
+            # 一時的にテストモードに切り替え
+            os.environ["TEST_MODE"] = "true"
     
     # エンベディングの生成
     embeddings = []
@@ -162,11 +209,28 @@ def create_embeddings(company_id):
     # バッチ処理を行うためのリスト
     all_questions = df["question"].tolist()
     
-    # テストモードかAPIクライアントが利用できない場合は個別に処理
-    for question in all_questions:
-        embedding = get_embedding(question, client)
-        embeddings.append(embedding)
-        print(f"エンベディング生成: '{question[:30]}...'")
+    # 各質問のエンベディングを生成
+    for i, question in enumerate(all_questions):
+        print(f"エンベディング生成中 ({i+1}/{len(all_questions)}): '{question[:30]}...'")
+        
+        try:
+            # エンベディングを取得
+            embedding = get_embedding(question, client)
+            embeddings.append(embedding)
+            
+            # レート制限に引っかからないように、バッチ処理の場合は一定間隔を空ける
+            if i < len(all_questions) - 1 and not is_test_mode():
+                time.sleep(1)  # 1秒待機
+                
+        except Exception as e:
+            print(f"エンベディング生成エラー: {e}")
+            # エラーが発生した場合はテストモードのエンベディングを使用
+            embedding = get_test_embedding(question)
+            embeddings.append(embedding)
+    
+    # 元のテストモード設定を復元
+    if not original_test_mode:
+        os.environ["TEST_MODE"] = "false"
     
     # エンベディングをデータフレームに追加
     df["embedding"] = embeddings

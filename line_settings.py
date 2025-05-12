@@ -1,0 +1,127 @@
+# line_settings.py
+import streamlit as st
+import os
+from dotenv import load_dotenv
+from services.line_service import send_line_message
+
+def line_settings_page(company_id=None):
+    """
+    LINE設定ページ
+    
+    Args:
+        company_id (str, optional): 会社ID
+    """
+    st.header("LINE通知設定")
+    
+    if not company_id:
+        st.error("会社情報が見つかりません。ログインしてください。")
+        return
+    
+    # 現在の設定値を取得
+    load_dotenv()
+    current_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
+    current_secret = os.getenv("LINE_CHANNEL_SECRET", "")
+    current_user_id = os.getenv("LINE_USER_ID", "")
+    
+    # LINE設定フォーム
+    with st.form("line_settings_form"):
+        st.subheader("LINE通知設定")
+        
+        st.markdown("""
+        LINE通知機能を設定すると、類似度の低い質問（適切な回答が見つからない場合）は
+        自動的にLINE経由で担当者に通知されます。
+        
+        ### LINE Botの設定方法
+        1. [LINE Developers](https://developers.line.biz/)でチャネルを作成
+        2. Messaging APIのチャネルアクセストークンを発行
+        3. 下記の情報を入力して設定を保存
+        """)
+        
+        # LINEチャネルアクセストークン
+        channel_token = st.text_input(
+            "LINEチャネルアクセストークン", 
+            value=current_token,
+            type="password"
+        )
+        
+        # LINEチャネルシークレット
+        channel_secret = st.text_input(
+            "LINEチャネルシークレット", 
+            value=current_secret,
+            type="password"
+        )
+        
+        # LINEユーザーID
+        user_id = st.text_input(
+            "LINE通知先ユーザーID", 
+            value=current_user_id
+        )
+        
+        # 類似度しきい値
+        low_similarity_threshold = st.slider(
+            "LINE通知を送信する類似度しきい値", 
+            min_value=0.0, 
+            max_value=0.6, 
+            value=0.4,
+            step=0.05,
+            help="この値より低い類似度の場合、LINE通知が送信されます"
+        )
+        
+        # 保存ボタン
+        submit = st.form_submit_button("設定を保存")
+        
+        if submit:
+            # .envファイルの既存の内容を読み込む
+            env_content = {}
+            try:
+                with open(".env", "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.strip() and not line.startswith("#"):
+                            key, value = line.strip().split("=", 1)
+                            env_content[key] = value
+            except FileNotFoundError:
+                pass  # .envファイルがない場合は新規作成
+            
+            # 更新する値を設定
+            env_content["LINE_CHANNEL_ACCESS_TOKEN"] = f'"{channel_token}"'
+            env_content["LINE_CHANNEL_SECRET"] = f'"{channel_secret}"'
+            env_content["LINE_USER_ID"] = f'"{user_id}"'
+            env_content["LOW_SIMILARITY_THRESHOLD"] = str(low_similarity_threshold)
+            
+            # 環境変数も更新
+            os.environ["LINE_CHANNEL_ACCESS_TOKEN"] = channel_token
+            os.environ["LINE_CHANNEL_SECRET"] = channel_secret
+            os.environ["LINE_USER_ID"] = user_id
+            os.environ["LOW_SIMILARITY_THRESHOLD"] = str(low_similarity_threshold)
+            
+            # .envファイルに書き込む
+            with open(".env", "w", encoding="utf-8") as f:
+                for key, value in env_content.items():
+                    f.write(f"{key}={value}\n")
+            
+            st.success("LINE設定を保存しました")
+    
+    # テスト通知セクション
+    st.subheader("LINE通知テスト")
+    
+    test_col1, test_col2 = st.columns(2)
+    
+    with test_col1:
+        test_message = st.text_input("テストメッセージ", value="これはFAQボットからのテスト通知です。")
+    
+    with test_col2:
+        test_room = st.text_input("テスト部屋番号", value="101")
+    
+    if st.button("テスト通知を送信"):
+        with st.spinner("通知を送信中..."):
+            success = send_line_message(
+                question=test_message,
+                answer="これはテスト通知です。",
+                similarity_score=0.3,
+                room_number=test_room
+            )
+            
+            if success:
+                st.success("テスト通知を送信しました")
+            else:
+                st.error("通知の送信に失敗しました。LINE設定を確認してください。")

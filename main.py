@@ -10,6 +10,8 @@ from services.login_service import login_user, logout_user, is_logged_in, is_sup
 from services.company_service import load_companies, add_company, get_company_name, get_company_list
 from admin_faq_management import faq_management_page, faq_preview_page
 from dotenv import load_dotenv
+# LINE設定ページのインポートを追加
+from line_settings import line_settings_page
 
 # .envファイルを読み込む
 load_dotenv()
@@ -134,7 +136,7 @@ def admin_dashboard():
             # 企業管理者メニュー
             admin_page = st.radio(
                 "管理メニュー",
-                ["FAQ管理", "FAQ履歴", "管理者設定", "FAQプレビュー"]
+                ["FAQ管理", "FAQ履歴", "LINE通知設定", "管理者設定", "FAQプレビュー"]
             )
         
         # テストモード切り替え
@@ -179,6 +181,8 @@ def admin_dashboard():
             faq_management_page()
         elif admin_page == "FAQ履歴":
             show_history(company_id)
+        elif admin_page == "LINE通知設定":  # 新しいメニュー項目
+            line_settings_page(company_id)
         elif admin_page == "管理者設定":
             admin_management_page()
         elif admin_page == "FAQプレビュー":
@@ -277,16 +281,19 @@ def customer_chat():
         st.rerun()  # 確実に再読み込み
     
     # ユーザー情報入力欄
-    user_info = st.text_input("お部屋番号：", key="user_info", placeholder="例: 鈴木太郎")
+    user_info = st.text_input("お部屋番号：", key="user_info", placeholder="例: 101")
     
     # ユーザー入力
     user_input = st.text_input("ご質問をどうぞ：", key="user_input", placeholder="例: チェックインの時間は何時ですか？")
     
     if user_input:
         with st.spinner("回答を生成中..."):
-            # 回答を取得
-            response, input_tokens, output_tokens = get_response(user_input, selected_company_id)
-            
+            # 回答を取得（ユーザー情報を渡す）
+            response, input_tokens, output_tokens = get_response(
+                user_input, 
+                selected_company_id,
+                user_info  # ユーザー情報（部屋番号など）を渡す
+            )            
             # 会話履歴に追加
             st.session_state.conversation_history.append({
                 "user_info": user_info,

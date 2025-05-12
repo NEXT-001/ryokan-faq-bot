@@ -9,17 +9,21 @@ import os
 import streamlit as st
 from config.settings import is_test_mode, get_data_path
 from services.embedding_service import get_embedding
+from services.line_service import send_line_message  # LINE送信機能をインポート
 
 # 類似度のしきい値（これを下回る場合は不明確な回答となる）
 SIMILARITY_THRESHOLD = 0.6
+# 非常に低い類似度のしきい値（この場合はLINE通知を送る）
+LOW_SIMILARITY_THRESHOLD = 0.4
 
-def get_response(user_input, company_id=None):
+def get_response(user_input, company_id=None, user_info=""):
     """
     ユーザー入力に対する最適な回答を取得する
     
     Args:
         user_input (str): ユーザーからの質問
         company_id (str, optional): 会社ID（指定がない場合はデモ企業）
+        user_info (str, optional): ユーザー情報（お部屋番号など）
         
     Returns:
         tuple: (回答, 入力トークン数, 出力トークン数)
@@ -52,6 +56,10 @@ def get_response(user_input, company_id=None):
         
         # デフォルトの回答
         default_response = "申し訳ございません。その質問については担当者に確認する必要があります。しばらくお待ちいただけますでしょうか。"
+        
+        # テストモードでもLINE通知をシミュレート
+        print(f"テストモード: LINEメッセージをシミュレートします - ユーザー情報: {user_info}, 質問: {user_input}")
+        
         return default_response, len(user_input.split()), len(default_response.split())
     
     # 本番モード
@@ -97,7 +105,16 @@ def get_response(user_input, company_id=None):
         # 類似度スコアが低すぎる場合
         if similarity_score < SIMILARITY_THRESHOLD:
             # 非常に低い類似度の場合
-            if similarity_score < 0.4:
+            if similarity_score < LOW_SIMILARITY_THRESHOLD:
+                # LINE通知を送信
+                print(f"類似度が低いため、LINE通知を送信します: {similarity_score:.4f}")
+                send_line_message(
+                    question=user_input,
+                    answer="適切な回答が見つかりませんでした。",
+                    similarity_score=similarity_score,
+                    room_number=user_info
+                )
+                
                 answer = "申し訳ございません。その質問については担当者に確認する必要があります。しばらくお待ちいただけますでしょうか。"
             else:  # 中程度の類似度の場合は回答を表示するが、不確かさを伝える
                 answer = f"{answer}\n\n※この回答に不明点がある場合は、直接スタッフにお問い合わせください。"
@@ -107,4 +124,13 @@ def get_response(user_input, company_id=None):
     except Exception as e:
         print(f"回答取得エラー: {e}")
         error_message = f"エラーが発生しました。スタッフにお問い合わせください。"
+        
+        # エラー発生時もLINE通知
+        send_line_message(
+            question=user_input,
+            answer=f"エラー: {str(e)}",
+            similarity_score=0.0,
+            room_number=user_info
+        )
+        
         return error_message, 0, 0
