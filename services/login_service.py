@@ -25,23 +25,28 @@ def login_user(company_id, username, password):
     # テストモードの場合はスーパー管理者ログイン
     from config.settings import is_test_mode
     if is_test_mode() and company_id == "admin" and username == "admin" and password == "admin":
-        st.session_state.is_logged_in = True
-        st.session_state.is_super_admin = True
-        st.session_state.company_id = None
-        st.session_state.company_name = "スーパー管理者"
-        st.session_state.username = username
+        # セッション情報を確実に保存
+        st.session_state["is_logged_in"] = True
+        st.session_state["is_super_admin"] = True
+        st.session_state["company_id"] = None
+        st.session_state["company_name"] = "スーパー管理者"
+        st.session_state["username"] = username
+        # URLパラメータにログイン状態を追加
+        st.query_params.logged_in = "true"
         return True, "スーパー管理者としてログインしました"
     
     # 企業管理者の認証
     success, message = verify_company_admin(company_id, username, password)
     
     if success:
-        # セッション情報の保存
-        st.session_state.is_logged_in = True
-        st.session_state.is_super_admin = False
-        st.session_state.company_id = company_id
-        st.session_state.company_name = message  # 会社名
-        st.session_state.username = username
+        # セッション情報を確実に保存（辞書形式のアクセスを使用）
+        st.session_state["is_logged_in"] = True
+        st.session_state["is_super_admin"] = False
+        st.session_state["company_id"] = company_id  # 会社IDを明示的に保存
+        st.session_state["company_name"] = message   # 会社名
+        st.session_state["username"] = username
+        # URLパラメータにログイン状態を追加
+        st.query_params.logged_in = "true"
         return True, f"{message}の管理者としてログインしました"
     
     return False, message
@@ -51,16 +56,18 @@ def logout_user():
     ユーザーログアウト処理
     """
     # セッション情報の削除
-    if "is_logged_in" in st.session_state:
-        del st.session_state.is_logged_in
-    if "is_super_admin" in st.session_state:
-        del st.session_state.is_super_admin
-    if "company_id" in st.session_state:
-        del st.session_state.company_id
-    if "company_name" in st.session_state:
-        del st.session_state.company_name
-    if "username" in st.session_state:
-        del st.session_state.username
+    for key in ["is_logged_in", "is_super_admin", "company_id", "company_name", "username"]:
+        if key in st.session_state:
+            del st.session_state[key]
+    
+    # URLパラメータからログイン状態を削除
+    if "logged_in" in st.query_params:
+        # 直接削除はできないため、新しいパラメータセットを作成
+        current_params = dict(st.query_params)
+        if "logged_in" in current_params:
+            del current_params["logged_in"]
+        # 他のパラメータは維持
+        st.query_params.update(**current_params)
     
     return True, "ログアウトしました"
 
@@ -71,7 +78,12 @@ def is_logged_in():
     Returns:
         bool: ログイン状態ならTrue
     """
-    return "is_logged_in" in st.session_state and st.session_state.is_logged_in
+    # 両方のソースからログイン状態を確認
+    session_logged_in = "is_logged_in" in st.session_state and st.session_state["is_logged_in"] is True
+    param_logged_in = st.query_params.get("logged_in") == "true"
+    
+    # どちらかがTrueならログイン中と見なす
+    return session_logged_in or param_logged_in
 
 def is_super_admin():
     """
@@ -80,7 +92,7 @@ def is_super_admin():
     Returns:
         bool: スーパー管理者ならTrue
     """
-    return is_logged_in() and "is_super_admin" in st.session_state and st.session_state.is_super_admin
+    return is_logged_in() and "is_super_admin" in st.session_state and st.session_state["is_super_admin"] is True
 
 def get_current_company_id():
     """
@@ -89,8 +101,25 @@ def get_current_company_id():
     Returns:
         str: 会社ID
     """
-    if is_logged_in() and "company_id" in st.session_state:
-        return st.session_state.company_id
+    if is_logged_in():
+        # まずcompany_idをチェック
+        if "company_id" in st.session_state and st.session_state["company_id"]:
+            return st.session_state["company_id"]
+        
+        # なければselected_companyをチェック
+        if "selected_company" in st.session_state:
+            # selected_companyの値をcompany_idにも設定して一貫性を保つ
+            company_id = st.session_state["selected_company"]
+            st.session_state["company_id"] = company_id
+            return company_id
+    
+    # URLパラメータから取得
+    current_company = st.query_params.get("company")
+    if current_company:
+        # 見つかった値をセッションにも保存
+        st.session_state["company_id"] = current_company
+        return current_company
+    
     return None
 
 def admin_management_page():
@@ -154,7 +183,7 @@ def admin_management_page():
     st.subheader("管理者アカウント削除")
     
     # 自分以外の管理者を取得
-    current_username = st.session_state.username
+    current_username = st.session_state.get("username", "")
     other_admins = [username for username in companies[company_id]["admins"] if username != current_username]
     
     if not other_admins:
