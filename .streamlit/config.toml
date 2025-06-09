@@ -1,0 +1,17 @@
+[global]
+# 開発モードを無効にしてページナビゲーションを非表示
+developmentMode = false
+
+[client]
+# ツールバーを非表示
+toolbarMode = "minimal"
+
+[server]
+# ポート設定（オプション）
+port = 8501
+address = "localhost"
+
+[ui]
+# サイドバーの初期状態を制御
+hideTopBar = false
+hideSidebarNav = true

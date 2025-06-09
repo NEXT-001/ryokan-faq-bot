@@ -188,3 +188,42 @@ streamlit run main.py
 3. 類似性の判断がランダムなベクトルに基づいているため、精度が低い場合があります
 
 これらの制限は本番モードでは解消されます。本番環境では、Anthropicの強力なAIモデルを活用して、より高度で正確な回答を提供します。
+
+# ユーザーページ
+http://localhost:8501?mode=user&company=demo-company
+
+# 管理者ページ  
+http://localhost:8501?mode=admin&company=demo-company
+
+# 登録ページ
+http://localhost:8501?mode=reg
+
+# メール認証（自動生成）
+http://localhost:8501?token=abc123...
+
+
+📋 利用可能なモード
+
+?mode=user&company=demo-company
+
+FAQチャットボット画面
+サイドバーなしのシンプルなインターフェース
+
+
+?mode=admin&company=demo-company
+
+FAQ管理者画面
+ログイン機能付き
+企業別の管理機能
+
+
+?mode=reg
+
+14日間無料お試し登録画面
+companyパラメータは無視
+
+
+?token=xxx
+
+メール認証ページ
+自動的にverifyモードに切り替わり
