@@ -1,0 +1,669 @@
+"""
+会社管理に関するサービス（SQLite対応版）
+services/company_service.py
+"""
+import os
+import json
+import hashlib
+import pandas as pd
+from datetime import datetime
+from utils.constants import get_data_path
+
+# core/database.pyからのインポート
+try:
+    from core.database import (
+        init_company_tables,
+        save_company_to_db,
+        get_company_from_db,
+        save_company_admin_to_db,
+        get_company_admins_from_db,
+        delete_company_admins_from_db,
+        get_all_companies_from_db,
+        company_exists_in_db,
+        update_company_faq_count_in_db,
+        hash_password as db_hash_password
+    )
+    DB_AVAILABLE = True
+    print("[COMPANY_SERVICE] SQLiteデータベース機能を使用します")
+except ImportError as e:
+    print(f"[COMPANY_SERVICE] データベースモジュールインポートエラー: {e}")
+    print("[COMPANY_SERVICE] JSONファイルベース機能にフォールバックします")
+    DB_AVAILABLE = False
+
+def hash_password(password):
+    """パスワードをハッシュ化する"""
+    if DB_AVAILABLE:
+        return db_hash_password(password)
+    else:
+        return hashlib.sha256(password.encode()).hexdigest()
+
+def get_settings_file_path(company_id):
+    """会社IDに基づいてsettings.jsonのパスを取得（フォールバック用）"""
+    if company_id:
+        company_dir = get_data_path(company_id)
+        return os.path.join(company_dir, "settings.json")
+    else:
+        base_dir = get_data_path()
+        return os.path.join(base_dir, "settings.json")
+
+def load_company_settings(company_id):
+    """会社の設定を読み込む（SQLite優先、JSONフォールバック）"""
+    print(f"[COMPANY_SERVICE] 会社設定読み込み開始: {company_id}")
+    
+    if DB_AVAILABLE:
+        try:
+            return load_company_settings_from_db(company_id)
+        except Exception as e:
+            print(f"[COMPANY_SERVICE] SQLite読み込みエラー: {e}")
+            print("[COMPANY_SERVICE] JSONファイルにフォールバック")
+    
+    # JSONファイルからの読み込み（フォールバック）
+    return load_company_settings_from_json(company_id)
+
+def load_company_settings_from_db(company_id):
+    """SQLiteから会社設定を読み込む"""
+    print(f"[COMPANY_SERVICE] SQLiteから設定読み込み: {company_id}")
+    
+    # 会社情報を取得
+    company_data = get_company_from_db(company_id)
+    
+    if not company_data:
+        print(f"[COMPANY_SERVICE] 会社がSQLiteに見つからないため、デフォルト作成: {company_id}")
+        return create_default_settings(company_id)
+    
+    # 管理者情報を取得
+    admins = get_company_admins_from_db(company_id)
+    
+    # 設定を組み立て
+    settings = {
+        "company_id": company_data["company_id"],
+        "company_name": company_data["company_name"],
+        "created_at": company_data["created_at"],
+        "faq_count": company_data["faq_count"],
+        "last_updated": company_data["last_updated"],
+        "admins": admins
+    }
+    
+    print(f"[COMPANY_SERVICE] SQLiteから読み込み完了: {company_id} (管理者数: {len(admins)})")
+    return settings
+
+def load_company_settings_from_json(company_id):
+    """JSONファイルから会社設定を読み込む（フォールバック）"""
+    print(f"[COMPANY_SERVICE] JSONから設定読み込み: {company_id}")
+    
+    settings_file = get_settings_file_path(company_id)
+    
+    try:
+        if os.path.exists(settings_file):
+            with open(settings_file, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+            print(f"[COMPANY_SERVICE] JSON読み込み完了: {company_id}")
+            return settings
+        else:
+            print(f"[COMPANY_SERVICE] JSONファイルが存在しないため、デフォルト作成: {company_id}")
+            return create_default_settings(company_id)
+    except Exception as e:
+        print(f"JSON設定ファイルの読み込みエラー: {e}")
+        return create_default_settings(company_id)
+
+def create_default_settings(company_id):
+    """デフォルトの設定を作成"""
+    print(f"[COMPANY_SERVICE] デフォルト設定を作成: {company_id}")
+    
+    current_time = datetime.now().isoformat()
+    
+    # デフォルト設定
+    if company_id == "demo-company":
+        default_settings = {
+            "company_id": "demo-company",
+            "company_name": "デモ企業",
+            "created_at": current_time,
+            "faq_count": 5,
+            "last_updated": current_time,
+            "admins": {
+                "admin": {
+                    "password": hash_password("admin123"),
+                    "email": "admin@example.com",
+                    "created_at": current_time
+                }
+            }
+        }
+        
+        # サンプルFAQを作成
+        create_sample_faq(company_id)
+    else:
+        default_settings = {
+            "company_id": company_id,
+            "company_name": f"企業_{company_id}",
+            "created_at": current_time,
+            "faq_count": 0,
+            "last_updated": current_time,
+            "admins": {}
+        }
+    
+    # 設定を保存
+    save_company_settings(company_id, default_settings)
+    return default_settings
+
+def create_sample_faq(company_id):
+    """サンプルFAQを作成"""
+    company_dir = get_data_path(company_id)
+    faq_file = os.path.join(company_dir, "faq.csv")
+    
+    if not os.path.exists(faq_file):
+        os.makedirs(company_dir, exist_ok=True)
+        
+        sample_faq = {
+            "question": [
+                "デモ企業のFAQシステムについて教えてください",
+                "このシステムは何ができますか？",
+                "FAQ管理はどうすれば良いですか？",
+                "新しい質問を追加するには？",
+                "ログインするにはどうすれば良いですか？"
+            ],
+            "answer": [
+                "これはデモ企業用のFAQシステムです。顧客からのよくある質問に自動で回答できます。",
+                "このシステムでは、FAQの管理（追加・編集・削除）、質問への自動回答、利用履歴の確認などができます。",
+                "管理者としてログイン後、「FAQ管理」タブからFAQの追加・編集・削除ができます。",
+                "管理者としてログイン後、「FAQ管理」タブから「FAQ追加」を選択し、質問と回答を入力して追加できます。",
+                "トップページの「管理者ログイン」ボタンから、企業IDとメールアドレス、パスワードを入力してログインできます。"
+            ]
+        }
+        pd.DataFrame(sample_faq).to_csv(faq_file, index=False)
+
+def save_company_settings(company_id, settings):
+    """会社の設定を保存する（SQLite優先、JSONフォールバック）"""
+    print(f"[COMPANY_SERVICE] 会社設定保存開始: {company_id}")
+    
+    if DB_AVAILABLE:
+        try:
+            return save_company_settings_to_db(company_id, settings)
+        except Exception as e:
+            print(f"[COMPANY_SERVICE] SQLite保存エラー: {e}")
+            print("[COMPANY_SERVICE] JSONファイルにフォールバック")
+    
+    # JSONファイルへの保存（フォールバック）
+    return save_company_settings_to_json(company_id, settings)
+
+def save_company_settings_to_db(company_id, settings):
+    """SQLiteに会社設定を保存"""
+    print(f"[COMPANY_SERVICE] SQLiteに保存: {company_id}")
+    
+    try:
+        # テーブルの初期化
+        init_company_tables()
+        
+        # 会社情報を保存
+        success = save_company_to_db(
+            company_id=company_id,
+            company_name=settings.get("company_name", f"企業_{company_id}"),
+            created_at=settings.get("created_at"),
+            faq_count=settings.get("faq_count", 0)
+        )
+        
+        if not success:
+            raise Exception("会社情報の保存に失敗")
+        
+        # 既存の管理者を削除
+        delete_company_admins_from_db(company_id)
+        
+        # 管理者情報を保存
+        admins = settings.get("admins", {})
+        for username, admin_info in admins.items():
+            admin_success = save_company_admin_to_db(
+                company_id=company_id,
+                username=username,
+                password=admin_info.get("password", ""),
+                email=admin_info.get("email", ""),
+                created_at=admin_info.get("created_at")
+            )
+            
+            if not admin_success:
+                print(f"[COMPANY_SERVICE] 管理者保存エラー: {username}")
+        
+        print(f"[COMPANY_SERVICE] SQLite保存完了: {company_id} (管理者数: {len(admins)})")
+        return True
+        
+    except Exception as e:
+        print(f"[COMPANY_SERVICE] SQLite保存エラー: {e}")
+        raise e
+
+def save_company_settings_to_json(company_id, settings):
+    """JSONファイルに会社設定を保存（フォールバック）"""
+    print(f"[COMPANY_SERVICE] JSONに保存: {company_id}")
+    
+    settings_file = get_settings_file_path(company_id)
+    
+    # ディレクトリが存在しない場合は作成
+    os.makedirs(os.path.dirname(settings_file), exist_ok=True)
+    
+    # last_updatedを更新
+    settings["last_updated"] = datetime.now().isoformat()
+    
+    try:
+        with open(settings_file, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, ensure_ascii=False, indent=2)
+        print(f"[COMPANY_SERVICE] JSON保存完了: {company_id}")
+        return True
+    except Exception as e:
+        print(f"JSON設定ファイルの保存エラー: {e}")
+        return False
+
+def load_companies(company_id=None):
+    """全会社情報を読み込む（後方互換性のため）"""
+    print(f"[COMPANY_SERVICE] 全会社情報読み込み開始")
+    
+    if DB_AVAILABLE:
+        try:
+            return load_companies_from_db()
+        except Exception as e:
+            print(f"[COMPANY_SERVICE] SQLite会社一覧読み込みエラー: {e}")
+    
+    return load_companies_from_json()
+
+def load_companies_from_db():
+    """SQLiteから全会社情報を読み込む"""
+    print(f"[COMPANY_SERVICE] SQLiteから全会社読み込み")
+    
+    companies = get_all_companies_from_db()
+    
+    # デモ企業がない場合は作成
+    if not companies:
+        demo_settings = create_default_settings("demo-company")
+        companies["demo-company"] = {
+            "name": demo_settings.get("company_name", "デモ企業"),
+            "created_at": demo_settings.get("created_at", ""),
+            "admins": demo_settings.get("admins", {})
+        }
+    
+    print(f"[COMPANY_SERVICE] SQLiteから読み込み完了: {len(companies)}社")
+    return companies
+
+def load_companies_from_json():
+    """JSONファイルから全会社情報を読み込む（フォールバック）"""
+    print(f"[COMPANY_SERVICE] JSONから全会社読み込み")
+    
+    companies = {}
+    
+    # companiesディレクトリをスキャン
+    base_dir = get_data_path()
+    companies_dir = os.path.join(base_dir, "companies")
+    
+    if os.path.exists(companies_dir):
+        for company_dir in os.listdir(companies_dir):
+            company_path = os.path.join(companies_dir, company_dir)
+            if os.path.isdir(company_path):
+                settings = load_company_settings_from_json(company_dir)
+                if settings:
+                    companies[company_dir] = {
+                        "name": settings.get("company_name", company_dir),
+                        "created_at": settings.get("created_at", ""),
+                        "admins": settings.get("admins", {})
+                    }
+    
+    # デモ企業がない場合は作成
+    if not companies:
+        demo_settings = create_default_settings("demo-company")
+        companies["demo-company"] = {
+            "name": demo_settings.get("company_name", "デモ企業"),
+            "created_at": demo_settings.get("created_at", ""),
+            "admins": demo_settings.get("admins", {})
+        }
+    
+    print(f"[COMPANY_SERVICE] JSONから読み込み完了: {len(companies)}社")
+    return companies
+
+def save_companies(companies):
+    """会社情報を保存する（後方互換性のため）"""
+    print(f"[COMPANY_SERVICE] 複数会社保存開始: {len(companies)}社")
+    
+    for company_id, company_data in companies.items():
+        settings = {
+            "company_id": company_id,
+            "company_name": company_data.get("name", company_id),
+            "created_at": company_data.get("created_at", datetime.now().isoformat()),
+            "faq_count": 0,
+            "last_updated": datetime.now().isoformat(),
+            "admins": company_data.get("admins", {})
+        }
+        save_company_settings(company_id, settings)
+
+def verify_company_admin(company_id, username, password):
+    """会社管理者の認証を行う"""
+    print(f"[AUTH] 認証開始: company_id={company_id}, username={username}")
+    
+    try:
+        settings = load_company_settings(company_id)
+        print(f"[AUTH] 設定読み込み結果: {settings is not None}")
+        
+        if not settings:
+            print("[AUTH] エラー: 企業設定が見つかりません")
+            return False, "企業設定が見つかりません"
+        
+        print(f"[AUTH] 読み込まれた会社ID: {settings.get('company_id')}")
+        print(f"[AUTH] 管理者数: {len(settings.get('admins', {}))}")
+        
+        if settings.get("company_id") != company_id:
+            print(f"[AUTH] エラー: 会社IDが一致しません")
+            return False, "企業IDが一致しません"
+        
+        admins = settings.get("admins", {})
+        if not admins:
+            print("[AUTH] エラー: 管理者が設定されていません")
+            return False, "管理者が設定されていません"
+        
+        print(f"[AUTH] 利用可能な管理者: {list(admins.keys())}")
+        
+        if username not in admins:
+            print(f"[AUTH] エラー: ユーザー名が見つかりません")
+            return False, "ユーザー名が見つかりません"
+        
+        admin_info = admins[username]
+        stored_hash = admin_info.get("password", "")
+        input_hash = hash_password(password)
+        
+        print(f"[AUTH] ハッシュ一致: {stored_hash == input_hash}")
+        
+        if stored_hash != input_hash:
+            print("[AUTH] エラー: パスワードが間違っています")
+            return False, "パスワードが間違っています"
+        
+        company_name = settings.get("company_name", "不明な企業")
+        print(f"[AUTH] 認証成功: {company_name}")
+        return True, company_name
+        
+    except Exception as e:
+        print(f"[AUTH] 認証処理でエラー: {e}")
+        return False, f"認証エラー: {str(e)}"
+
+def add_company(company_id, company_name, admin_username, admin_password, admin_email):
+    """新しい会社を追加する"""
+    print(f"[COMPANY_SERVICE] 会社追加開始: {company_id}")
+    
+    if not company_id or not company_name or not admin_username or not admin_password:
+        return False, "すべての項目を入力してください"
+    
+    # 会社の重複チェック
+    if DB_AVAILABLE:
+        if company_exists_in_db(company_id):
+            return False, "この企業IDは既に使用されています"
+    else:
+        settings_file = get_settings_file_path(company_id)
+        if os.path.exists(settings_file):
+            return False, "この企業IDは既に使用されています"
+    
+    # 新しい会社設定を作成
+    new_settings = {
+        "company_id": company_id,
+        "company_name": company_name,
+        "created_at": datetime.now().isoformat(),
+        "faq_count": 0,
+        "last_updated": datetime.now().isoformat(),
+        "admins": {
+            admin_username: {
+                "password": hash_password(admin_password),
+                "email": admin_email,
+                "created_at": datetime.now().isoformat()
+            }
+        }
+    }
+    
+    if save_company_settings(company_id, new_settings):
+        print(f"[COMPANY_SERVICE] 会社追加完了: {company_id}")
+        return True, "企業と管理者アカウントを作成しました"
+    else:
+        print(f"[COMPANY_SERVICE] 会社追加失敗: {company_id}")
+        return False, "企業の作成に失敗しました"
+
+def add_admin(company_id, username, password, email=""):
+    """会社に管理者を追加する"""
+    print(f"[COMPANY_SERVICE] 管理者追加開始: {company_id}/{username}")
+    
+    if not username or not password:
+        return False, "ユーザー名とパスワードを入力してください"
+    
+    settings = load_company_settings(company_id)
+    
+    if not settings or settings.get("company_id") != company_id:
+        return False, "企業が見つかりません"
+    
+    if "admins" not in settings:
+        settings["admins"] = {}
+    
+    if username in settings["admins"]:
+        return False, "このユーザー名は既に使用されています"
+    
+    settings["admins"][username] = {
+        "password": hash_password(password),
+        "email": email,
+        "created_at": datetime.now().isoformat()
+    }
+    
+    if save_company_settings(company_id, settings):
+        print(f"[COMPANY_SERVICE] 管理者追加完了: {company_id}/{username}")
+        return True, "管理者を追加しました"
+    else:
+        print(f"[COMPANY_SERVICE] 管理者追加失敗: {company_id}/{username}")
+        return False, "管理者の追加に失敗しました"
+
+def get_company_name(company_id):
+    """会社IDから会社名を取得する"""
+    settings = load_company_settings(company_id)
+    
+    if settings and "company_name" in settings:
+        return settings["company_name"]
+    
+    return None
+
+def get_company_info(company_id):
+    """会社の詳細情報を取得する"""
+    print(f"[COMPANY_SERVICE] 会社情報取得: {company_id}")
+    
+    settings = load_company_settings(company_id)
+    
+    if not settings:
+        return None
+    
+    admin_count = len(settings.get("admins", {}))
+    
+    company_info = {
+        "id": settings.get("company_id"),
+        "name": settings.get("company_name"),
+        "admin_count": admin_count,
+        "faq_count": settings.get("faq_count", 0),
+        "created_at": settings.get("created_at"),
+        "last_updated": settings.get("last_updated")
+    }
+    
+    print(f"[COMPANY_SERVICE] 会社情報取得完了: {company_id} (管理者: {admin_count}名)")
+    return company_info
+
+def update_faq_count(company_id, count):
+    """FAQの数を更新する"""
+    print(f"[COMPANY_SERVICE] FAQ数更新: {company_id} -> {count}")
+    
+    if DB_AVAILABLE:
+        try:
+            success = update_company_faq_count_in_db(company_id, count)
+            if success:
+                print(f"[COMPANY_SERVICE] SQLiteでFAQ数更新完了: {company_id}")
+                return True
+            else:
+                print(f"[COMPANY_SERVICE] SQLiteでFAQ数更新失敗、JSONにフォールバック: {company_id}")
+        except Exception as e:
+            print(f"[COMPANY_SERVICE] SQLiteでFAQ数更新エラー: {e}")
+    
+    # JSONフォールバック
+    settings = load_company_settings(company_id)
+    if settings:
+        settings["faq_count"] = count
+        success = save_company_settings(company_id, settings)
+        if success:
+            print(f"[COMPANY_SERVICE] JSONでFAQ数更新完了: {company_id}")
+        return success
+    
+    return False
+
+def get_company_list():
+    """利用可能な会社の一覧を取得する"""
+    print(f"[COMPANY_SERVICE] 会社一覧取得開始")
+    
+    if DB_AVAILABLE:
+        try:
+            # SQLiteから取得
+            companies = get_all_companies_from_db()
+            company_list = []
+            
+            for company_id, company_data in companies.items():
+                company_list.append({
+                    "id": company_id,
+                    "name": company_data.get("name"),
+                    "admin_count": len(company_data.get("admins", {})),
+                    "faq_count": company_data.get("faq_count", 0),
+                    "created_at": company_data.get("created_at"),
+                    "last_updated": company_data.get("last_updated")
+                })
+            
+            print(f"[COMPANY_SERVICE] SQLiteから会社一覧取得完了: {len(company_list)}社")
+            return company_list
+            
+        except Exception as e:
+            print(f"[COMPANY_SERVICE] SQLite一覧取得エラー: {e}")
+    
+    # JSONフォールバック
+    print(f"[COMPANY_SERVICE] JSONから会社一覧取得")
+    base_dir = get_data_path()
+    companies_dir = os.path.join(base_dir, "companies")
+    company_list = []
+    
+    if os.path.exists(companies_dir):
+        for company_dir in os.listdir(companies_dir):
+            company_path = os.path.join(companies_dir, company_dir)
+            if os.path.isdir(company_path):
+                company_info = get_company_info(company_dir)
+                if company_info:
+                    company_list.append(company_info)
+    
+    print(f"[COMPANY_SERVICE] JSONから会社一覧取得完了: {len(company_list)}社")
+    return company_list
+
+# メールアドレスベースの認証関数を追加
+def verify_company_admin_by_email(company_id, email, password):
+    """メールアドレスとパスワードで管理者認証を行う"""
+    print(f"[AUTH_EMAIL] メール認証開始: company_id={company_id}, email={email}")
+    
+    try:
+        settings = load_company_settings(company_id)
+        print(f"[AUTH_EMAIL] 設定読み込み結果: {settings is not None}")
+        
+        if not settings:
+            print("[AUTH_EMAIL] エラー: 企業設定が見つかりません")
+            return False, "企業設定が見つかりません"
+        
+        print(f"[AUTH_EMAIL] 読み込まれた会社ID: {settings.get('company_id')}")
+        print(f"[AUTH_EMAIL] 管理者数: {len(settings.get('admins', {}))}")
+        
+        if settings.get("company_id") != company_id:
+            print(f"[AUTH_EMAIL] エラー: 会社IDが一致しません")
+            return False, "企業IDが一致しません"
+        
+        admins = settings.get("admins", {})
+        if not admins:
+            print("[AUTH_EMAIL] エラー: 管理者が設定されていません")
+            return False, "管理者が設定されていません"
+        
+        print(f"[AUTH_EMAIL] 利用可能な管理者: {list(admins.keys())}")
+        
+        # メールアドレスで管理者を検索
+        matching_admin = None
+        matching_username = None
+        
+        for username, admin_info in admins.items():
+            admin_email = admin_info.get("email", "")
+            print(f"[AUTH_EMAIL] チェック中: {username} -> {admin_email}")
+            
+            if admin_email.lower() == email.lower():
+                matching_admin = admin_info
+                matching_username = username
+                print(f"[AUTH_EMAIL] メールアドレス一致: {username}")
+                break
+        
+        if not matching_admin:
+            print(f"[AUTH_EMAIL] エラー: メールアドレスが見つかりません (検索: {email})")
+            return False, "メールアドレスが見つかりません"
+        
+        # パスワードの確認
+        stored_hash = matching_admin.get("password", "")
+        input_hash = hash_password(password)
+        
+        print(f"[AUTH_EMAIL] ハッシュ一致: {stored_hash == input_hash}")
+        
+        if stored_hash != input_hash:
+            print("[AUTH_EMAIL] エラー: パスワードが間違っています")
+            return False, "パスワードが間違っています"
+        
+        # 認証成功
+        company_name = settings.get("company_name", "不明な企業")
+        print(f"[AUTH_EMAIL] 認証成功: {company_name}")
+        return True, {
+            "company_name": company_name,
+            "username": matching_username,
+            "email": email
+        }
+        
+    except Exception as e:
+        print(f"[AUTH_EMAIL] 認証処理でエラー: {e}")
+        import traceback
+        print(f"[AUTH_EMAIL] トレースバック: {traceback.format_exc()}")
+        return False, f"認証エラー: {str(e)}"
+
+# データ移行用のヘルパー関数
+def migrate_json_to_sqlite():
+    """JSONファイルからSQLiteにデータを移行"""
+    if not DB_AVAILABLE:
+        print("[MIGRATION] SQLiteが利用できないため移行をスキップします")
+        return False
+    
+    print("[MIGRATION] JSONからSQLiteへの移行開始")
+    
+    try:
+        # テーブル初期化
+        init_company_tables()
+        
+        # 既存のJSONファイルをスキャン
+        base_dir = get_data_path()
+        companies_dir = os.path.join(base_dir, "companies")
+        
+        if not os.path.exists(companies_dir):
+            print("[MIGRATION] 移行対象のJSONファイルがありません")
+            return True
+        
+        migrated_count = 0
+        
+        for company_dir in os.listdir(companies_dir):
+            company_path = os.path.join(companies_dir, company_dir)
+            settings_file = os.path.join(company_path, "settings.json")
+            
+            if os.path.isdir(company_path) and os.path.exists(settings_file):
+                try:
+                    with open(settings_file, 'r', encoding='utf-8') as f:
+                        settings = json.load(f)
+                    
+                    company_id = settings.get("company_id", company_dir)
+                    print(f"[MIGRATION] 移行中: {company_id}")
+                    
+                    # SQLiteに保存
+                    save_company_settings_to_db(company_id, settings)
+                    
+                    migrated_count += 1
+                    print(f"[MIGRATION] 移行完了: {company_id}")
+                    
+                except Exception as e:
+                    print(f"[MIGRATION] {company_dir} の移行エラー: {e}")
+        
+        print(f"[MIGRATION] 移行完了: {migrated_count} 社")
+        return True
+        
+    except Exception as e:
+        print(f"[MIGRATION] 移行エラー: {e}")
+        return False

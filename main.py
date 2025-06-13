@@ -91,7 +91,7 @@ else:
 
 # 定数
 os.makedirs("data", exist_ok=True)
-DB_NAME = os.path.join("data", "faq_admins.db")
+DB_NAME = os.path.join("data", "faq_database.db")
 VERIFICATION_URL = "http://localhost:8501"
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASS = os.getenv("SMTP_PASS")

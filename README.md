@@ -190,10 +190,10 @@ streamlit run main.py
 これらの制限は本番モードでは解消されます。本番環境では、Anthropicの強力なAIモデルを活用して、より高度で正確な回答を提供します。
 
 # ユーザーページ
-http://localhost:8501?mode=user&company=demo-company
+http://localhost:8501?mode=user&company_id=demo-company
 
 # 管理者ページ  
-http://localhost:8501?mode=admin&company=demo-company
+http://localhost:8501?mode=admin&company_id=demo-company
 
 # 登録ページ
 http://localhost:8501?mode=reg
@@ -204,13 +204,13 @@ http://localhost:8501?token=abc123...
 
 📋 利用可能なモード
 
-?mode=user&company=demo-company
+?mode=user&company_id=demo-company
 
 FAQチャットボット画面
 サイドバーなしのシンプルなインターフェース
 
 
-?mode=admin&company=demo-company
+?mode=admin&company_id=demo-company
 
 FAQ管理者画面
 ログイン機能付き

@@ -84,12 +84,12 @@ def login_user_by_email(email, password, db_name):
         conn.close()
         
         if user:
-            company_name, user_name, user_email = user
+            company_id, company_name, user_name, user_email = user
             
             # セッション情報を設定
             st.session_state["is_logged_in"] = True
             st.session_state["is_super_admin"] = False
-            st.session_state["company_id"] = company_name  # 会社名を会社IDとして使用
+            st.session_state["company_id"] = company_id  # 会社名を会社IDとして使用
             st.session_state["company_name"] = company_name
             st.session_state["username"] = user_name
             st.session_state["user_email"] = user_email
