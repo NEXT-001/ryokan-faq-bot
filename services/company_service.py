@@ -152,7 +152,7 @@ def load_companies(company_id=None):
                         "admins": settings.get("admins", {})
                     }
     
-    # デモ企業がない場合は作成
+    # データがない場合はデモ企業データを作成
     if not companies:
         demo_settings = create_default_settings("demo-company")
         companies["demo-company"] = {

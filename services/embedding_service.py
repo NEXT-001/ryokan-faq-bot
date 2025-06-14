@@ -1,5 +1,5 @@
 """
-エンベディング関連の共通サービス
+エンベディング関連の共通サービス（進行状況表示対応版）
 embedding_service.py
 """
 import os
@@ -8,6 +8,7 @@ import numpy as np
 import hashlib
 import voyageai
 import time
+import streamlit as st
 from config.settings import is_test_mode, get_data_path
 
 # エンベディングの次元数 (テストモードでは1024次元を想定)
@@ -151,12 +152,13 @@ def get_embedding(text, client=None):
     print(f"リトライ回数（{MAX_RETRIES}回）を超えました。テストモードのエンベディングを返します。")
     return get_test_embedding(text)
 
-def create_embeddings(company_id):
+def create_embeddings(company_id, show_progress=True):
     """
     指定された会社のFAQデータにエンベディングを追加して保存する
     
     Args:
         company_id (str): 会社ID
+        show_progress (bool): Streamlitで進行状況を表示するかどうか
     """
     # 会社のデータディレクトリを取得
     company_dir = os.path.join(get_data_path(), "companies", company_id)
@@ -166,7 +168,10 @@ def create_embeddings(company_id):
     # CSVファイルの確認
     csv_path = os.path.join(company_dir, "faq.csv")
     if not os.path.exists(csv_path):
-        print(f"CSVファイルが見つかりません: {csv_path}")
+        error_msg = f"CSVファイルが見つかりません: {csv_path}"
+        print(error_msg)
+        if show_progress:
+            st.error(error_msg)
         return False
     
     # CSVからデータを読み込む
@@ -174,44 +179,92 @@ def create_embeddings(company_id):
         df = pd.read_csv(csv_path)
         print(f"{len(df)}個のFAQエントリを読み込みました。")
     except Exception as e:
-        print(f"CSVファイルの読み込みエラー: {e}")
+        error_msg = f"CSVファイルの読み込みエラー: {e}"
+        print(error_msg)
+        if show_progress:
+            st.error(error_msg)
         return False
     
     # 一時的にテストモードをチェック
     original_test_mode = is_test_mode()
-    # テストモードが明示的に設定されていない場合、または
-    # ユーザーからのリクエストでテストモードが指定されていない場合は
-    # VoyageAI APIが利用できるかどうかを確認
-    
     print(f"現在のテストモード: {original_test_mode}")
     
     # VoyageAI APIクライアントを初期化
     client = None
     if not original_test_mode:
-        client = load_voyage_client()
-        
-        # テスト呼び出しを行い、API呼び出しが成功するか確認
-        try:
-            print("API接続テスト中...")
-            # テスト呼び出しのためのダミーテキスト
-            dummy_text = "テスト文章"
-            test_embedding = get_embedding(dummy_text, client)
-            print("API接続テスト成功")
-        except Exception as e:
-            print(f"API接続テスト失敗: {e}")
-            print("エンベディング生成をテストモードに切り替えます")
-            # 一時的にテストモードに切り替え
-            os.environ["TEST_MODE"] = "true"
+        if show_progress:
+            with st.status("API接続テスト中...", expanded=True) as status:
+                st.write("VoyageAI APIクライアントを初期化しています...")
+                client = load_voyage_client()
+                
+                if client:
+                    st.write("API接続テストを実行しています...")
+                    try:
+                        # テスト呼び出しを行い、API呼び出しが成功するか確認
+                        dummy_text = "テスト文章"
+                        test_embedding = get_embedding(dummy_text, client)
+                        st.write("✅ API接続テスト成功")
+                        status.update(label="API接続テスト完了", state="complete")
+                    except Exception as e:
+                        st.write(f"❌ API接続テスト失敗: {e}")
+                        st.write("テストモードに切り替えます")
+                        os.environ["TEST_MODE"] = "true"
+                        status.update(label="API接続失敗 - テストモードに切り替え", state="error")
+                else:
+                    st.write("❌ APIクライアントの初期化に失敗")
+                    st.write("テストモードに切り替えます")
+                    os.environ["TEST_MODE"] = "true"
+                    status.update(label="APIクライアント初期化失敗 - テストモードに切り替え", state="error")
+        else:
+            client = load_voyage_client()
+            if client:
+                try:
+                    print("API接続テスト中...")
+                    dummy_text = "テスト文章"
+                    test_embedding = get_embedding(dummy_text, client)
+                    print("API接続テスト成功")
+                except Exception as e:
+                    print(f"API接続テスト失敗: {e}")
+                    print("エンベディング生成をテストモードに切り替えます")
+                    os.environ["TEST_MODE"] = "true"
     
     # エンベディングの生成
     embeddings = []
-    
-    # バッチ処理を行うためのリスト
     all_questions = df["question"].tolist()
+    total_count = len(all_questions)
+    
+    # 進行状況表示の準備
+    if show_progress:
+        # プログレスバーとステータス表示の初期化
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        current_question_text = st.empty()
+        
+        # 詳細な進行状況を表示するための expandable セクション
+        with st.expander("詳細な進行状況", expanded=False):
+            detail_placeholder = st.empty()
+            detail_logs = []
     
     # 各質問のエンベディングを生成
     for i, question in enumerate(all_questions):
-        print(f"エンベディング生成中 ({i+1}/{len(all_questions)}): '{question[:30]}...'")
+        current_progress = (i + 1) / total_count
+        progress_text = f"エンベディング生成中: {i+1}/{total_count} 件"
+        
+        print(f"エンベディング生成中 ({i+1}/{total_count}): '{question[:30]}...'")
+        
+        # 進行状況の更新
+        if show_progress:
+            progress_bar.progress(current_progress)
+            status_text.text(progress_text)
+            current_question_text.info(f"処理中: {question[:50]}..." if len(question) > 50 else f"処理中: {question}")
+            
+            # 詳細ログの更新
+            detail_logs.append(f"[{i+1}/{total_count}] {question[:40]}..." if len(question) > 40 else f"[{i+1}/{total_count}] {question}")
+            # 最新の10件のログのみ表示
+            if len(detail_logs) > 10:
+                detail_logs = detail_logs[-10:]
+            
+            detail_placeholder.text("\n".join(detail_logs))
         
         try:
             # エンベディングを取得
@@ -223,10 +276,19 @@ def create_embeddings(company_id):
                 time.sleep(1)  # 1秒待機
                 
         except Exception as e:
-            print(f"エンベディング生成エラー: {e}")
+            error_msg = f"エンベディング生成エラー: {e}"
+            print(error_msg)
+            if show_progress:
+                st.warning(f"質問 {i+1} でエラーが発生しました。テストモードのエンベディングを使用します。")
             # エラーが発生した場合はテストモードのエンベディングを使用
             embedding = get_test_embedding(question)
             embeddings.append(embedding)
+    
+    # 進行状況の完了表示
+    if show_progress:
+        progress_bar.progress(1.0)
+        status_text.text(f"✅ エンベディング生成完了: {total_count}/{total_count} 件")
+        current_question_text.success("全ての質問のエンベディング生成が完了しました")
     
     # 元のテストモード設定を復元
     if not original_test_mode:
@@ -237,7 +299,25 @@ def create_embeddings(company_id):
     
     # PKLファイルとして保存
     pkl_path = os.path.join(company_dir, "faq_with_embeddings.pkl")
-    df.to_pickle(pkl_path)
-    print(f"FAQデータとエンベディングを保存しました: {pkl_path}")
+    
+    if show_progress:
+        with st.status("ファイル保存中...", expanded=False) as save_status:
+            st.write("エンベディングデータを保存しています...")
+            try:
+                df.to_pickle(pkl_path)
+                st.write(f"✅ 保存完了: {pkl_path}")
+                save_status.update(label="ファイル保存完了", state="complete")
+            except Exception as e:
+                error_msg = f"❌ 保存エラー: {e}"
+                st.write(error_msg)
+                save_status.update(label="ファイル保存失敗", state="error")
+                return False
+    else:
+        try:
+            df.to_pickle(pkl_path)
+            print(f"FAQデータとエンベディングを保存しました: {pkl_path}")
+        except Exception as e:
+            print(f"保存エラー: {e}")
+            return False
     
     return True

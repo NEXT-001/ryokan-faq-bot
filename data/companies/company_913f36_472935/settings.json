@@ -4,5 +4,11 @@
   "created_at": "2025-06-11T16:46:49.832749",
   "faq_count": 0,
   "last_updated": "2025-06-11T16:46:49.832749",
-  "admins": {}
+  "admins": {
+      "admin": {
+      "password": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
+      "email": "admin@example.com",
+      "created_at": "2025-06-11T16:44:09.374831"
+    }
+  }
 }

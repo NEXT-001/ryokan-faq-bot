@@ -156,73 +156,306 @@ def hide_entire_sidebar():
         </style>
     """, unsafe_allow_html=True)
 
-# === 会社ID自動生成機能 ===
 def generate_company_id(company_name):
     """
-    会社名から会社IDを自動生成する
+    会社名から会社IDを自動生成する（SQLiteのみ使用）
     
     Args:
         company_name (str): 会社名
         
     Returns:
-        str: 自動生成された会社ID
+        str: 自動生成されたユニークな会社ID
     """
-    # 会社名を英数字のみに変換
-    # 日本語文字を削除し、英数字とハイフン、アンダースコアのみを残す
-    company_id = re.sub(r'[^a-zA-Z0-9\-_]', '', company_name.lower())
+    print(f"[COMPANY ID] 会社名 '{company_name}' からIDを生成開始")
     
-    # 空文字列の場合はランダムIDを生成
-    if not company_id:
-        company_id = f"company_{str(uuid.uuid4())[:8]}"
+    # Step 1: SQLiteから既存の全会社IDを取得
+    existing_companies = get_existing_company_ids_from_sqlite()
+    print(f"[COMPANY ID] 既存の会社ID数: {len(existing_companies)}")
+    if existing_companies:
+        print(f"[COMPANY ID] 既存ID一覧: {existing_companies}")
     
-    # 既存の会社IDと重複しないかチェック
-    existing_companies = []
+    # Step 2: ベースIDを生成
+    base_id = create_base_company_id(company_name)
+    print(f"[COMPANY ID] ベースID: '{base_id}'")
+    
+    # Step 3: 重複チェックしてユニークIDを生成
+    unique_id = create_unique_company_id(base_id, existing_companies)
+    print(f"[COMPANY ID] 最終ID: '{unique_id}'")
+    
+    return unique_id
+
+def get_existing_company_ids_from_sqlite():
+    """
+    SQLiteデータベースから既存の全ての会社IDを取得
+    
+    Returns:
+        list: 既存の会社IDのリスト
+    """
+    existing_ids = []
+    
+    try:
+        print(f"[SQLITE] データベース接続: {DB_NAME}")
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        
+        # テーブルの存在確認
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        if not c.fetchone():
+            print("[SQLITE] usersテーブルが存在しません")
+            conn.close()
+            return existing_ids
+        
+        # カラム構造の確認
+        c.execute("PRAGMA table_info(users)")
+        columns = [col[1] for col in c.fetchall()]
+        print(f"[SQLITE] テーブル構造: {columns}")
+        
+        # company_idカラムが存在する場合
+        if 'company_id' in columns:
+            c.execute("SELECT DISTINCT company_id FROM users WHERE company_id IS NOT NULL AND company_id != ''")
+            rows = c.fetchall()
+            existing_ids = [row[0] for row in rows]
+            print(f"[SQLITE] company_idカラムから {len(existing_ids)} 件取得")
+        
+        # company_idがなく、古いcompanyカラムが存在する場合
+        elif 'company' in columns:
+            c.execute("SELECT DISTINCT company FROM users WHERE company IS NOT NULL AND company != ''")
+            rows = c.fetchall()
+            existing_ids = [row[0] for row in rows]
+            print(f"[SQLITE] companyカラムから {len(existing_ids)} 件取得")
+        
+        else:
+            print("[SQLITE] 会社ID関連のカラムが見つかりません")
+        
+        conn.close()
+        
+    except sqlite3.Error as e:
+        print(f"[SQLITE ERROR] {e}")
+    except Exception as e:
+        print(f"[SQLITE ERROR] 予期しないエラー: {e}")
+    
+    return existing_ids
+
+def create_base_company_id(company_name):
+    """
+    会社名からベースとなる会社IDを生成
+    
+    Args:
+        company_name (str): 会社名
+        
+    Returns:
+        str: ベース会社ID
+    """
+    if not company_name or not company_name.strip():
+        # 会社名が空の場合
+        base_id = f"company_{str(uuid.uuid4())[:8]}"
+        print(f"[BASE ID] 会社名が空 -> ランダムID: {base_id}")
+        return base_id
+    
+    # 会社名を英数字のみに変換（日本語文字を削除）
+    clean_name = re.sub(r'[^a-zA-Z0-9]', '', company_name.lower())
+    
+    if clean_name and len(clean_name) >= 3:
+        # 英数字が3文字以上ある場合はそれを使用（最大15文字）
+        base_id = clean_name[:15]
+        print(f"[BASE ID] 会社名ベース: '{company_name}' -> '{base_id}'")
+    else:
+        # 英数字が少ない/ない場合はUUIDを使用
+        base_id = f"company_{str(uuid.uuid4())[:8]}"
+        print(f"[BASE ID] 英数字不足 -> ランダムID: {base_id}")
+    
+    return base_id
+
+def create_unique_company_id(base_id, existing_ids):
+    """
+    ベースIDから重複のないユニークな会社IDを生成
+    
+    Args:
+        base_id (str): ベースとなる会社ID
+        existing_ids (list): 既存の会社IDリスト
+        
+    Returns:
+        str: ユニークな会社ID
+    """
+    # 既存IDをセットに変換（高速検索のため）
+    existing_set = set(existing_ids)
+    
+    # ベースIDがそのまま使える場合
+    if base_id not in existing_set:
+        print(f"[UNIQUE ID] ベースIDを使用: '{base_id}'")
+        return base_id
+    
+    # 重複する場合は番号を付加
+    print(f"[UNIQUE ID] '{base_id}' は重複。番号を付加します")
+    
+    for counter in range(1, 1000):  # 最大999まで試行
+        candidate_id = f"{base_id}_{counter}"
+        
+        if candidate_id not in existing_set:
+            print(f"[UNIQUE ID] ユニークID決定: '{candidate_id}'")
+            return candidate_id
+    
+    # 999回試行しても重複する場合（ほぼあり得ない）
+    fallback_id = f"company_{str(uuid.uuid4())[:8]}"
+    print(f"[UNIQUE ID] フォールバック使用: '{fallback_id}'")
+    return fallback_id
+
+# テスト用関数
+def test_company_id_generation():
+    """
+    会社ID生成のテスト
+    """
+    print("=" * 50)
+    print("会社ID生成テスト")
+    print("=" * 50)
+    
+    test_cases = [
+        "株式会社サンプル",
+        "Sample Company Inc",
+        "テスト企業",
+        "ABC123",
+        "山田商事",
+        "",
+        "!@#$%^&*()",
+        "VeryLongCompanyNameForTesting",
+        "123456789"
+    ]
+    
+    results = []
+    
+    for company_name in test_cases:
+        print(f"\n--- テスト: '{company_name}' ---")
+        try:
+            company_id = generate_company_id(company_name)
+            results.append((company_name, company_id, "成功"))
+            print(f"✅ 結果: '{company_id}'")
+        except Exception as e:
+            results.append((company_name, str(e), "失敗"))
+            print(f"❌ エラー: {e}")
+    
+    # 結果サマリー
+    print(f"\n{'='*50}")
+    print("テスト結果サマリー")
+    print(f"{'='*50}")
+    for company_name, result, status in results:
+        print(f"{status}: '{company_name}' -> '{result}'")
+    
+    return results
+
+# デバッグ用関数
+def debug_sqlite_companies():
+    """
+    SQLiteの会社データをデバッグ表示
+    """
+    print("\n" + "=" * 40)
+    print("SQLite会社データ デバッグ")
+    print("=" * 40)
+    
     try:
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
-        c.execute("SELECT DISTINCT company_id FROM users")
-        existing_companies = [row[0] for row in c.fetchall()]
+        
+        # テーブル存在確認
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        if not c.fetchone():
+            print("❌ usersテーブルが存在しません")
+            conn.close()
+            return
+        
+        # テーブル構造
+        c.execute("PRAGMA table_info(users)")
+        columns = c.fetchall()
+        print("📋 テーブル構造:")
+        for col in columns:
+            print(f"  - {col[1]} ({col[2]})")
+        
+        # データ件数
+        c.execute("SELECT COUNT(*) FROM users")
+        total_count = c.fetchone()[0]
+        print(f"\n📊 総レコード数: {total_count}")
+        
+        # 会社ID関連データ
+        column_names = [col[1] for col in columns]
+        
+        if 'company_id' in column_names:
+            c.execute("SELECT company_id, company_name, name, email FROM users WHERE company_id IS NOT NULL")
+            rows = c.fetchall()
+            print(f"\n🏢 company_idデータ ({len(rows)}件):")
+            for row in rows:
+                print(f"  - ID: {row[0]}, 会社名: {row[1]}, 担当: {row[2]}, Email: {row[3]}")
+        
+        elif 'company' in column_names:
+            c.execute("SELECT company, name, email FROM users WHERE company IS NOT NULL")
+            rows = c.fetchall()
+            print(f"\n🏢 companyデータ ({len(rows)}件):")
+            for row in rows:
+                print(f"  - 会社: {row[0]}, 担当: {row[1]}, Email: {row[2]}")
+        
+        else:
+            print("\n⚠️ 会社関連のカラムが見つかりません")
+        
         conn.close()
-    except:
-        pass
+        
+    except Exception as e:
+        print(f"❌ デバッグエラー: {e}")
     
-    # JSONファイルからも既存企業IDをチェック
-    if MODULES_AVAILABLE:
-        try:
-            from services.company_service import load_companies
-            json_companies = load_companies()
-            existing_companies.extend(json_companies.keys())
-        except:
-            pass
-    
-    # 重複する場合は番号を付加
-    original_id = company_id
-    counter = 1
-    while company_id in existing_companies:
-        company_id = f"{original_id}_{counter}"
-        counter += 1
-    
-    return company_id
+    print("=" * 40)
 
-def create_company_folder_structure(company_id, company_name):
+# 重複テスト用関数
+def test_duplicate_handling():
+    """
+    重複処理のテスト（同じ会社名で複数回実行）
+    """
+    print("\n" + "=" * 40)
+    print("重複処理テスト")
+    print("=" * 40)
+    
+    test_company_name = "テスト会社"
+    generated_ids = []
+    
+    print(f"'{test_company_name}' で5回連続生成テスト:")
+    
+    for i in range(5):
+        company_id = generate_company_id(test_company_name)
+        generated_ids.append(company_id)
+        print(f"  {i+1}回目: '{company_id}'")
+    
+    # 重複チェック
+    unique_ids = set(generated_ids)
+    print(f"\n結果:")
+    print(f"  生成されたID: {generated_ids}")
+    print(f"  ユニークID数: {len(unique_ids)}")
+    print(f"  重複なし: {'✅' if len(unique_ids) == len(generated_ids) else '❌'}")
+    
+    return generated_ids
+
+def create_company_folder_structure(company_id, company_name, password, email):
     """
     会社用のフォルダ構造とファイルを作成する
     
     Args:
         company_id (str): 会社ID
         company_name (str): 会社名
+        password (str): パスワード
+        email (str): メールアドレス
         
     Returns:
         bool: 作成成功したかどうか
     """
     try:
-        # 会社フォルダのパスを作成
-        company_folder = os.path.join("data", company_id)
+        # 会社フォルダのパスを作成（data/companies/{company_id}）
+        companies_base_dir = os.path.join("data", "companies")
+        company_folder = os.path.join(companies_base_dir, company_id)
         
-        # フォルダが存在しない場合は作成
+        # companiesディレクトリが存在しない場合は作成
+        if not os.path.exists(companies_base_dir):
+            os.makedirs(companies_base_dir)
+            print(f"[BASE DIR CREATED] {companies_base_dir}")
+        
+        # 会社フォルダが存在しない場合は作成
         if not os.path.exists(company_folder):
             os.makedirs(company_folder)
-            print(f"[FOLDER CREATED] {company_folder}")
+            print(f"[COMPANY FOLDER CREATED] {company_folder}")
         
         # 1. FAQ用のCSVファイルを作成
         faq_csv_path = os.path.join(company_folder, "faq.csv")
@@ -287,65 +520,81 @@ def create_company_folder_structure(company_id, company_name):
                 "company_name": company_name,
                 "created_at": datetime.now().isoformat(),
                 "faq_count": 5,  # 初期FAQの数
-                "last_updated": datetime.now().isoformat()
+                "last_updated": datetime.now().isoformat(),
+                "admins": {
+                    "admin": {
+                        "password": hash_password(password),
+                        "email": email,
+                        "created_at": datetime.now().isoformat()
+                    }
+                }
             }
             
             with open(settings_path, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, ensure_ascii=False, indent=2)
             print(f"[FILE CREATED] {settings_path}")
         
-        print(f"[SUCCESS] 会社フォルダ構造を作成しました: {company_id}")
+        print(f"[SUCCESS] 会社フォルダ構造を作成しました: data/companies/{company_id}")
         return True
         
     except Exception as e:
         print(f"[ERROR] 会社フォルダ構造の作成に失敗しました: {e}")
         return False
-
+    
 # === データベース関連機能 ===
 def init_db():
-    """データベースを初期化（テーブル構造を修正）"""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    
-    # 既存のテーブル構造をチェック
-    c.execute("PRAGMA table_info(users)")
-    columns = [column[1] for column in c.fetchall()]
-    
-    # 新しいテーブル構造に対応
-    if 'company_id' not in columns:
-        # 新しいテーブル構造を作成
-        c.execute('''CREATE TABLE IF NOT EXISTS users_new (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        company_id TEXT,
-                        company_name TEXT,
-                        name TEXT,
-                        email TEXT UNIQUE,
-                        password TEXT,
-                        created_at TEXT,
-                        is_verified INTEGER DEFAULT 0,
-                        verify_token TEXT
-                    )''')
+    """データベースを初期化（シンプル版）"""
+    try:
+        print(f"[DB INIT] データベース初期化開始: {DB_NAME}")
         
-        # 既存データがある場合は移行
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        
+        # usersテーブルの存在チェック
         c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
-        if c.fetchone():
-            # 既存データを新しいテーブルに移行
-            c.execute('''INSERT INTO users_new 
-                         (company_id, company_name, name, email, password, created_at, is_verified, verify_token)
-                         SELECT company as company_id, company as company_name, name, email, password, created_at, is_verified, verify_token
-                         FROM users''')
+        table_exists = c.fetchone()
+        
+        if not table_exists:
+            print("[DB INIT] usersテーブルが存在しません。新規作成します")
             
-            # 古いテーブルを削除して新しいテーブルをリネーム
-            c.execute("DROP TABLE users")
-            c.execute("ALTER TABLE users_new RENAME TO users")
-            print("[DB MIGRATION] テーブル構造を新しい形式に移行しました")
-    else:
-        # テーブルが既に新しい形式の場合は何もしない
-        pass
+            # 新しいusersテーブルを作成
+            c.execute('''CREATE TABLE users (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            company_id TEXT,
+                            company_name TEXT,
+                            name TEXT,
+                            email TEXT UNIQUE,
+                            password TEXT,
+                            created_at TEXT,
+                            is_verified INTEGER DEFAULT 0,
+                            verify_token TEXT
+                        )''')
+            
+            # インデックスを作成
+            c.execute("CREATE INDEX idx_users_email ON users(email)")
+            c.execute("CREATE INDEX idx_users_company_id ON users(company_id)")
+            c.execute("CREATE INDEX idx_users_verify_token ON users(verify_token)")
+            
+            conn.commit()
+            print("[DB INIT] usersテーブルを作成しました")
+        else:
+            print("[DB INIT] usersテーブルは既に存在します")
+        
+        conn.close()
+        print("[DB INIT] データベース初期化完了")
+        
+    except sqlite3.Error as e:
+        print(f"[DB INIT ERROR] SQLiteエラー: {e}")
+        if 'conn' in locals():
+            conn.close()
+        raise
+        
+    except Exception as e:
+        print(f"[DB INIT ERROR] 予期しないエラー: {e}")
+        if 'conn' in locals():
+            conn.close()
+        raise
     
-    conn.commit()
-    conn.close()
-
 def hash_password(password):
     """パスワードをハッシュ化"""
     return hashlib.sha256(password.encode()).hexdigest()
@@ -379,18 +628,40 @@ def register_user(company_name, name, email, password):
         company_id = generate_company_id(company_name)
         print(f"[COMPANY ID GENERATED] {company_name} -> {company_id}")
         
-        # 2. データベースに登録（company_idとcompany_nameを分けて保存）
+        # 2. データベースに登録
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
+        
+        # テーブル構造を確認
+        c.execute("PRAGMA table_info(users)")
+        columns_info = c.fetchall()
+        existing_columns = [column[1] for column in columns_info]
+        print(f"[REGISTER] 現在のテーブル構造: {existing_columns}")
+        
+        # 必要なカラムが存在するかチェック
+        required_columns = ['company_id', 'company_name', 'verify_token']
+        missing_columns = [col for col in required_columns if col not in existing_columns]
+        
+        if missing_columns:
+            print(f"[REGISTER ERROR] 不足しているカラム: {missing_columns}")
+            conn.close()
+            # データベースを再初期化
+            init_db()
+            # 再接続
+            conn = sqlite3.connect(DB_NAME)
+            c = conn.cursor()
+        
+        # 登録処理を実行
         c.execute("""
-            INSERT INTO users (company_id, company_name, name, email, password, created_at, verify_token) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (company_id, company_name, name, email, hash_password(password), datetime.now().isoformat(), token))
+            INSERT INTO users (company_id, company_name, name, email, password, created_at, is_verified, verify_token) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (company_id, company_name, name, email, hash_password(password), datetime.now().isoformat(), 0, token))
+        
         conn.commit()
         conn.close()
         
         # 3. 会社フォルダ構造を作成
-        folder_success = create_company_folder_structure(company_id, company_name)
+        folder_success = create_company_folder_structure(company_id, company_name, password, email)
         if not folder_success:
             print(f"[WARNING] フォルダ構造の作成に失敗しましたが、登録は継続します")
         
@@ -419,14 +690,14 @@ def verify_user_token(token):
     try:
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
-        c.execute("SELECT id, email FROM users WHERE verify_token = ? AND is_verified = 0", (token,))
+        c.execute("SELECT id, company_id, email FROM users WHERE verify_token = ? AND is_verified = 0", (token,))
         user = c.fetchone()
 
         if user:
             c.execute("UPDATE users SET is_verified = 1, verify_token = NULL WHERE id = ?", (user[0],))
             conn.commit()
             conn.close()
-            return True, user[1]
+            return True, user[1], user[2]
         conn.close()
         return False, None
     except Exception as e:
@@ -514,9 +785,9 @@ def registration_page():
         password = st.text_input("パスワード", type="password", placeholder="8文字以上を推奨")
         
         # 会社ID生成プレビュー
-        if company:
-            preview_id = generate_company_id(company)
-            st.caption(f"💡 生成される会社ID: `{preview_id}`")
+        # if company:
+        #     generated_id = generate_company_id(company)
+        #     st.caption(f"💡 生成される会社ID: `{generated_id}`")
         
         submitted = st.form_submit_button("登録")
 
@@ -529,7 +800,7 @@ def registration_page():
             
             success = register_user(company, name, email, password)
             if success:
-                generated_id = generate_company_id(company)
+                # generated_id = generate_company_id(company)
                 st.success("✅ 仮登録が完了しました。認証メールをご確認ください。")
                 st.info("📧 お送りしたメールのリンクをクリックして、登録を完了してください。")
                 
@@ -537,7 +808,7 @@ def registration_page():
                 st.markdown("---")
                 st.markdown("### 📋 登録情報")
                 st.markdown(f"**会社名:** {company}")
-                st.markdown(f"**会社ID:** `{generated_id}`")
+                # st.markdown(f"**会社ID:** `{generated_id}`")
                 st.markdown(f"**担当者:** {name}")
                 st.markdown(f"**メールアドレス:** {email}")
                 
@@ -565,7 +836,7 @@ def verify_page():
     token = st.query_params.get("token")
     
     if token:
-        verified, email = verify_user_token(token)
+        verified, company_id, email = verify_user_token(token)
         if verified:
             st.success("✅ 認証完了")
             st.info(f"メールアドレス（{email}）の認証が完了しました！")
@@ -577,7 +848,7 @@ def verify_page():
                 # URLパラメータをクリアしてログイン画面に移動
                 st.query_params.clear()
                 st.query_params.mode = "admin"
-                st.query_params.company = "demo-company"
+                st.query_params.company = company_id
                 st.rerun()
                 
         else:
