@@ -193,28 +193,33 @@ def create_embeddings(company_id, show_progress=True):
     client = None
     if not original_test_mode:
         if show_progress:
-            with st.status("API接続テスト中...", expanded=True) as status:
-                st.write("VoyageAI APIクライアントを初期化しています...")
-                client = load_voyage_client()
-                
-                if client:
-                    st.write("API接続テストを実行しています...")
-                    try:
-                        # テスト呼び出しを行い、API呼び出しが成功するか確認
-                        dummy_text = "テスト文章"
-                        test_embedding = get_embedding(dummy_text, client)
-                        st.write("✅ API接続テスト成功")
-                        status.update(label="API接続テスト完了", state="complete")
-                    except Exception as e:
-                        st.write(f"❌ API接続テスト失敗: {e}")
-                        st.write("テストモードに切り替えます")
-                        os.environ["TEST_MODE"] = "true"
-                        status.update(label="API接続失敗 - テストモードに切り替え", state="error")
-                else:
-                    st.write("❌ APIクライアントの初期化に失敗")
-                    st.write("テストモードに切り替えます")
+            # st.status の代わりにシンプルなメッセージ表示を使用
+            api_status = st.empty()
+            api_status.info("🔧 VoyageAI APIクライアントを初期化しています...")
+            
+            client = load_voyage_client()
+            
+            if client:
+                api_status.info("🔍 API接続テストを実行しています...")
+                try:
+                    # テスト呼び出しを行い、API呼び出しが成功するか確認
+                    dummy_text = "テスト文章"
+                    test_embedding = get_embedding(dummy_text, client)
+                    api_status.success("✅ API接続テスト成功")
+                    time.sleep(0.5)  # メッセージを表示する時間を確保
+                    api_status.empty()  # メッセージをクリア
+                except Exception as e:
+                    api_status.error(f"❌ API接続テスト失敗: {e}")
+                    st.warning("テストモードに切り替えます")
                     os.environ["TEST_MODE"] = "true"
-                    status.update(label="APIクライアント初期化失敗 - テストモードに切り替え", state="error")
+                    time.sleep(1)
+                    api_status.empty()  # メッセージをクリア
+            else:
+                api_status.error("❌ APIクライアントの初期化に失敗")
+                st.warning("テストモードに切り替えます")
+                os.environ["TEST_MODE"] = "true"
+                time.sleep(1)
+                api_status.empty()  # メッセージをクリア
         else:
             client = load_voyage_client()
             if client:
@@ -233,16 +238,20 @@ def create_embeddings(company_id, show_progress=True):
     all_questions = df["question"].tolist()
     total_count = len(all_questions)
     
-    # 進行状況表示の準備
+    # 進行状況表示の準備（完全にシンプルな形式）
     if show_progress:
-        # プログレスバーとステータス表示の初期化
+        st.write("**エンベディング生成を開始します...**")
         progress_bar = st.progress(0)
         status_text = st.empty()
         current_question_text = st.empty()
         
-        # 詳細な進行状況を表示するための expandable セクション
-        with st.expander("詳細な進行状況", expanded=False):
+        # 詳細ログ用（シンプルな表示）
+        show_details = st.checkbox("詳細な進行状況を表示", value=False)
+        if show_details:
             detail_placeholder = st.empty()
+            detail_logs = []
+        else:
+            detail_placeholder = None
             detail_logs = []
     
     # 各質問のエンベディングを生成
@@ -258,13 +267,14 @@ def create_embeddings(company_id, show_progress=True):
             status_text.text(progress_text)
             current_question_text.info(f"処理中: {question[:50]}..." if len(question) > 50 else f"処理中: {question}")
             
-            # 詳細ログの更新
-            detail_logs.append(f"[{i+1}/{total_count}] {question[:40]}..." if len(question) > 40 else f"[{i+1}/{total_count}] {question}")
-            # 最新の10件のログのみ表示
-            if len(detail_logs) > 10:
-                detail_logs = detail_logs[-10:]
-            
-            detail_placeholder.text("\n".join(detail_logs))
+            # 詳細ログの更新（チェックボックスがONの場合のみ）
+            if show_details and detail_placeholder is not None:
+                detail_logs.append(f"[{i+1}/{total_count}] {question[:40]}..." if len(question) > 40 else f"[{i+1}/{total_count}] {question}")
+                # 最新の10件のログのみ表示
+                if len(detail_logs) > 10:
+                    detail_logs = detail_logs[-10:]
+                
+                detail_placeholder.text("\n".join(detail_logs))
         
         try:
             # エンベディングを取得
@@ -301,17 +311,18 @@ def create_embeddings(company_id, show_progress=True):
     pkl_path = os.path.join(company_dir, "faq_with_embeddings.pkl")
     
     if show_progress:
-        with st.status("ファイル保存中...", expanded=False) as save_status:
-            st.write("エンベディングデータを保存しています...")
-            try:
-                df.to_pickle(pkl_path)
-                st.write(f"✅ 保存完了: {pkl_path}")
-                save_status.update(label="ファイル保存完了", state="complete")
-            except Exception as e:
-                error_msg = f"❌ 保存エラー: {e}"
-                st.write(error_msg)
-                save_status.update(label="ファイル保存失敗", state="error")
-                return False
+        # st.status の代わりにシンプルなメッセージ表示を使用
+        save_status = st.empty()
+        save_status.info("💾 エンベディングデータを保存しています...")
+        try:
+            df.to_pickle(pkl_path)
+            save_status.success(f"✅ 保存完了: {pkl_path}")
+            time.sleep(0.5)  # メッセージを表示する時間を確保
+            save_status.empty()  # メッセージをクリア
+        except Exception as e:
+            error_msg = f"❌ 保存エラー: {e}"
+            save_status.error(error_msg)
+            return False
     else:
         try:
             df.to_pickle(pkl_path)
