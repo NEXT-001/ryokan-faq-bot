@@ -5,9 +5,9 @@ import sqlite3
 import hashlib
 from datetime import datetime
 from services.company_service import (
-    load_companies, 
-    save_companies, 
-    verify_company_admin, 
+    load_companies,
+    save_companies,
+    verify_company_admin,
     add_admin,
     hash_password
 )
@@ -75,7 +75,7 @@ def login_user_by_email(email, password, db_name):
         
         # メールアドレスとパスワードで検索（認証済みのユーザーのみ）
         c.execute("""
-            SELECT company, name, email 
+            SELECT company_id, company_name, name, email 
             FROM users 
             WHERE email = ? AND password = ? AND is_verified = 1
         """, (email, hash_password_sqlite(password)))

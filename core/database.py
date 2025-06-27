@@ -471,8 +471,7 @@ def close_connection():
 def backup_database(backup_path=None):
     """データベースをバックアップ"""
     if backup_path is None:
-        import datetime
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = f"backup_{timestamp}.db"
     
     try:
@@ -492,6 +491,9 @@ def backup_database(backup_path=None):
 def get_table_info(table_name):
     """テーブル情報を取得"""
     try:
+        # SQLインジェクション対策: テーブル名をサニタイズ
+        if not table_name.replace('_', '').replace('-', '').isalnum():
+            raise ValueError("Invalid table name")
         query = f"PRAGMA table_info({table_name})"
         return fetch_all(query)
     except Exception as e:
@@ -553,6 +555,10 @@ def table_exists(table_name):
 def count_records(table_name, where_clause=None, params=None):
     """レコード数を取得"""
     try:
+        # SQLインジェクション対策: テーブル名をサニタイズ
+        if not table_name.replace('_', '').replace('-', '').isalnum():
+            raise ValueError("Invalid table name")
+            
         if where_clause:
             query = f"SELECT COUNT(*) FROM {table_name} WHERE {where_clause}"
         else:

@@ -98,7 +98,10 @@ SMTP_PASS = os.getenv("SMTP_PASS")
 
 # サイドバーナビゲーションを非表示にする関数
 def hide_sidebar_navigation():
-    """Streamlitのデフォルトページナビゲーションを非表示にする（管理モードのサイドバーは保持）"""
+    """
+    Streamlitのデフォルトページナビゲーションを非表示にする
+    （管理モードのサイドバーは保持）
+    """
     st.markdown("""
         <style>
             /* サイドバーのページナビゲーションのみを非表示（サイドバー自体は保持） */
@@ -605,7 +608,10 @@ def send_verification_email(email, token):
         st.warning("メール設定が不完全です。管理者にお問い合わせください。")
         return False
         
-    msg = MIMEText(f"以下のリンクをクリックして登録を完了してください:\n{VERIFICATION_URL}?token={token}")
+    msg = MIMEText(
+        f"以下のリンクをクリックして登録を完了してください:\n"
+        f"{VERIFICATION_URL}?token={token}"
+    )
     msg["Subject"] = "【FAQシステム】メールアドレス認証のお願い"
     msg["From"] = SMTP_USER
     msg["To"] = email
