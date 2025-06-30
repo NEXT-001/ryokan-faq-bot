@@ -2,9 +2,7 @@
 .env
 
 # ユーザーデータ
-data/users.json
-data/history.csv
-data/faq_with_embeddings.pkl
+# data/
 
 # キャッシュと一時ファイル
 __pycache__/
@@ -22,3 +20,4 @@ myenv/
 
 ./devcontainer
 apitest.py
+

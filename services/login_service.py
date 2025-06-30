@@ -1,18 +1,24 @@
 # login_service.py
 import streamlit as st
 import pandas as pd
+import sqlite3
+import hashlib
 from datetime import datetime
 from services.company_service import (
-    load_companies, 
-    save_companies, 
-    verify_company_admin, 
+    load_companies,
+    save_companies,
+    verify_company_admin,
     add_admin,
     hash_password
 )
 
+def hash_password_sqlite(password):
+    """SQLite用のパスワードハッシュ化（main.pyと同じ形式）"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
 def login_user(company_id, username, password):
     """
-    ユーザーログイン処理
+    ユーザーログイン処理（従来の企業ID・ユーザー名方式）
     
     Args:
         company_id (str): 会社ID
@@ -51,12 +57,59 @@ def login_user(company_id, username, password):
     
     return False, message
 
+def login_user_by_email(email, password, db_name):
+    """
+    メールアドレスとパスワードでのログイン処理（SQLiteから認証）
+    
+    Args:
+        email (str): メールアドレス
+        password (str): パスワード
+        db_name (str): データベースファイルのパス
+        
+    Returns:
+        tuple: (成功したかどうか, メッセージ, 会社ID)
+    """
+    try:
+        conn = sqlite3.connect(db_name)
+        c = conn.cursor()
+        
+        # メールアドレスとパスワードで検索（認証済みのユーザーのみ）
+        c.execute("""
+            SELECT company_id, company_name, name, email 
+            FROM users 
+            WHERE email = ? AND password = ? AND is_verified = 1
+        """, (email, hash_password_sqlite(password)))
+        
+        user = c.fetchone()
+        conn.close()
+        
+        if user:
+            company_id, company_name, user_name, user_email = user
+            
+            # セッション情報を設定
+            st.session_state["is_logged_in"] = True
+            st.session_state["is_super_admin"] = False
+            st.session_state["company_id"] = company_id  # 会社名を会社IDとして使用
+            st.session_state["company_name"] = company_name
+            st.session_state["username"] = user_name
+            st.session_state["user_email"] = user_email
+            
+            # URLパラメータにログイン状態を追加
+            st.query_params.logged_in = "true"
+            
+            return True, f"{company_name}の管理者として", company_name
+        else:
+            return False, "メールアドレスまたはパスワードが間違っているか、メール認証が完了していません", None
+            
+    except Exception as e:
+        return False, f"データベースエラー: {e}", None
+
 def logout_user():
     """
     ユーザーログアウト処理
     """
     # セッション情報の削除
-    for key in ["is_logged_in", "is_super_admin", "company_id", "company_name", "username"]:
+    for key in ["is_logged_in", "is_super_admin", "company_id", "company_name", "username", "user_email"]:
         if key in st.session_state:
             del st.session_state[key]
     
