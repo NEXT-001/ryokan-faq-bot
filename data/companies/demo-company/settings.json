@@ -1,0 +1,14 @@
+{
+  "company_id": "demo-company",
+  "company_name": "デモ企業",
+  "created_at": "2025-06-11T16:44:09.374831",
+  "faq_count": 0,
+  "last_updated": "2025-06-16T12:16:32.798999",
+  "admins": {
+    "admin": {
+      "password": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
+      "email": "admin@example.com",
+      "created_at": "2025-06-11T16:44:09.374831"
+    }
+  }
+}
