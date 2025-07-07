@@ -16,7 +16,8 @@ __pycache__/
 Thumbs.db
 
 # venvを無視
-myenv/
+venv/
+.venv/
 
 ./devcontainer
 apitest.py
