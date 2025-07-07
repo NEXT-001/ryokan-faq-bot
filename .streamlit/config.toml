@@ -1,13 +1,17 @@
 [global]
-# 開発モードを無効にしてページナビゲーションを非表示
 developmentMode = false
 
 [server]
 port = 8501
 address = "0.0.0.0"
 headless = true
-enableCORS = false
-enableXsrfProtection = false
+
+[client]
+toolbarMode = "minimal"
+#showSidebarNavigation = true  # ページナビゲーション非表示
 
 [browser]
 gatherUsageStats = false
+
+[ui]
+hideTopBar = false  # トップバーは表示（ユーザビリティのため）
