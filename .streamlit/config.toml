@@ -8,7 +8,7 @@ headless = true
 
 [client]
 toolbarMode = "minimal"
-showSidebarNavigation = false  # ページナビゲーション非表示
+#showSidebarNavigation = true  # ページナビゲーション非表示
 
 [browser]
 gatherUsageStats = false
