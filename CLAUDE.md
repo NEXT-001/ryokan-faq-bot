@@ -4,7 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Application Overview
 
-This is a Ryokan (Japanese inn) FAQ chatbot built with Streamlit. The application provides semantic search-based automatic responses to common questions about ryokan services, with multi-company support, user authentication, and LINE integration.
+This is a Ryokan (Japanese inn) FAQ chatbot built with Streamlit. 
+The application provides semantic search-based automatic responses to common questions about ryokan services, with multi-company support, user authentication, and LINE integration.
 
 ## Key Commands
 

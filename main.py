@@ -705,10 +705,10 @@ def verify_user_token(token):
             conn.close()
             return True, user[1], user[2]
         conn.close()
-        return False, None
+        return False, None, None
     except Exception as e:
         st.error(f"データベースエラーが発生しました: {e}")
-        return False, None
+        return False, None, None
 
 def login_user_by_email(email, password):
     """
@@ -782,10 +782,10 @@ def registration_page():
     # データベース初期化
     init_db()
     
-    st.info("📝 会社IDは会社名から自動で生成されます")
+    # st.info("📝 会社IDは会社名から自動で生成されます")
     
     with st.form("register_form"):
-        company = st.text_input("会社名", placeholder="例: 株式会社サンプル")
+        company = st.text_input("会社名（チャットボット画面に表示されるので、旅館名などにしてください。）", placeholder="例: ○○旅館")
         name = st.text_input("担当者名", placeholder="例: 田中太郎")
         email = st.text_input("メールアドレス", placeholder="例: tanaka@sample.com")
         password = st.text_input("パスワード", type="password", placeholder="8文字以上を推奨")
@@ -855,6 +855,8 @@ def verify_page():
                 st.query_params.clear()
                 st.query_params.mode = "admin"
                 st.query_params.company = company_id
+                # 認証されたメールアドレスをパラメータとして渡す
+                st.query_params.verified_email = email
                 st.rerun()
                 
         else:
@@ -862,7 +864,7 @@ def verify_page():
             st.warning("このトークンは無効、または既に認証済みです。")
             
             # ホームに戻るボタン
-            if st.button("🏠 ホームページに戻る"):
+            if st.button("🏠 FAQチャットボットに戻る"):
                 st.query_params.clear()
                 st.rerun()
     else:
@@ -870,7 +872,7 @@ def verify_page():
         st.info("メールのリンクが正しいか確認してください。")
         
         # ホームに戻るボタン
-        if st.button("🏠 ホームページに戻る"):
+        if st.button("🏠 FAQチャットボットに戻る"):
             st.query_params.clear()
             st.rerun()
 
@@ -1045,10 +1047,10 @@ def login_page(company_id):
         admin_password = st.text_input("パスワード", type="password")
         
         # 既存の企業管理者ログイン用のオプション（折りたたみ式で提供）
-        with st.expander("従来の企業ID・ユーザー名でのログイン"):
-            admin_company_id = st.text_input("企業ID", value=company_id or '')
-            admin_username = st.text_input("ユーザー名")
-            st.caption("※ 従来の管理者アカウントでログインする場合にご利用ください")
+        # with st.expander("従来の企業ID・ユーザー名でのログイン"):
+        #     admin_company_id = st.text_input("企業ID", value=company_id or '')
+        #     admin_username = st.text_input("ユーザー名")
+        #     st.caption("※ 従来の管理者アカウントでログインする場合にご利用ください")
         
         admin_submit = st.form_submit_button("ログイン")
         
