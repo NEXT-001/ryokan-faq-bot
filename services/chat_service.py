@@ -55,8 +55,12 @@ def get_response(user_input, company_id=None, user_info=""):
                 return response, len(user_input.split()), len(response.split())
         
         # デフォルトの回答
-        default_response = "申し訳ございません。その質問については担当者に確認する必要があります。しばらくお待ちいただけますでしょうか。"
-        
+        default_response = (
+            "申し訳ございません。その質問については担当者に確認する必要があります。"
+            "しばらくお待ちいただけますでしょうか。\n\n"
+            "I apologize, but I need to check with our staff regarding that question. "
+            "Could you please wait a moment?"
+        )
         # テストモードでもLINE通知をシミュレート
         print(f"テストモード: LINEメッセージをシミュレートします - ユーザー情報: {user_info}, 質問: {user_input}")
         
@@ -104,20 +108,34 @@ def get_response(user_input, company_id=None, user_info=""):
         
         # 類似度スコアが低すぎる場合
         if similarity_score < SIMILARITY_THRESHOLD:
-            # 非常に低い類似度の場合
-            if similarity_score < LOW_SIMILARITY_THRESHOLD:
-                # LINE通知を送信
-                print(f"類似度が低いため、LINE通知を送信します: {similarity_score:.4f}")
-                send_line_message(
-                    question=user_input,
-                    answer="適切な回答が見つかりませんでした。",
-                    similarity_score=similarity_score,
-                    room_number=user_info
-                )
+            # # 非常に低い類似度の場合
+            # if similarity_score < LOW_SIMILARITY_THRESHOLD:
+            # LINE通知を送信
+            print(f"類似度が低いため、LINE通知を送信します: {similarity_score:.4f}")
+            send_line_message(
+                question=user_input,
+                answer="適切な回答が見つかりませんでした。\n\n申し訳ございません。その質問については担当者に確認する必要があります。",
+                similarity_score=similarity_score,
+                room_number=user_info
+            )
+            
+            answer = (
+                "申し訳ございません。その質問については担当者に確認する必要があります。"
+                "しばらくお待ちいただけますでしょうか。\n\n"
+                "I apologize, but I need to check with our staff regarding that question. "
+                "Could you please wait a moment?"
+            )
+            # else:  # 中程度の類似度の場合は回答を表示するが、不確かさを伝える
+            #     # LINE通知を送信
+            #     print(f"類似度が低いため、LINE通知を送信します: {similarity_score:.4f}")
+            #     send_line_message(
+            #         question=user_input,
+            #         answer="適切な回答が見つかりませんでした。",
+            #         similarity_score=similarity_score,
+            #         room_number=user_info
+            #     )
                 
-                answer = "申し訳ございません。その質問については担当者に確認する必要があります。しばらくお待ちいただけますでしょうか。"
-            else:  # 中程度の類似度の場合は回答を表示するが、不確かさを伝える
-                answer = f"{answer}\n\n※この回答に不明点がある場合は、直接スタッフにお問い合わせください。"
+            #     answer = f"{answer}\n\n※この回答に不明点がある場合は、直接スタッフにお問い合わせください。"
     
         return answer, len(user_input.split()), len(answer.split())
     
