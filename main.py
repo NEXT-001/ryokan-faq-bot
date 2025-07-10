@@ -915,10 +915,9 @@ def user_page(company_id):
     # 履歴クリアボタン
     if st.button("会話履歴をクリア"):
         st.session_state.conversation_history = []
-        if "user_input" in st.session_state:
-            del st.session_state["user_input"]
-        if "user_info" in st.session_state:
-            del st.session_state["user_info"]
+        # 入力欄を空にするために空文字列を設定
+        st.session_state["user_input"] = ""
+        st.session_state["user_info"] = ""
         st.success("会話履歴をクリアしました！")
     
     # ユーザー情報入力欄
