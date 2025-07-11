@@ -94,8 +94,8 @@ def show_history(company_id=None):
                     st.write(f"**回答:** {row['answer']}")
                     
                     # トークン情報が存在する場合のみ表示
-                    if 'input_tokens' in row and 'output_tokens' in row:
-                        st.write(f"**トークン:** 入力 {row['input_tokens']}、出力 {row['output_tokens']}")
+                    # if 'input_tokens' in row and 'output_tokens' in row:
+                    #     st.write(f"**トークン:** 入力 {row['input_tokens']}、出力 {row['output_tokens']}")
                     
                     st.markdown("---")
             else:

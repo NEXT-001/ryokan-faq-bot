@@ -3,17 +3,12 @@
   "company_name": "デモ企業",
   "created_at": "2025-06-11T16:44:09.374831",
   "faq_count": 0,
-  "last_updated": "2025-07-07T18:16:28.212123",
+  "last_updated": "2025-07-10T12:37:16.202155",
   "admins": {
     "admin": {
       "password": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
       "email": "admin@example.com",
       "created_at": "2025-06-11T16:44:09.374831"
-    },
-    "admin2": {
-      "password": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
-      "email": "dschoi@yahoo.co.jp",
-      "created_at": "2025-07-07T18:16:28.212123"
     }
   }
 }

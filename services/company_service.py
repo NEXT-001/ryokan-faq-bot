@@ -105,7 +105,10 @@ def create_sample_faq(company_id):
 
 def save_company_settings(company_id, settings):
     """会社の設定を保存する"""
+    print(f"[SAVE_COMPANY_SETTINGS] 設定保存開始: {company_id}")
+    
     settings_file = get_settings_file_path(company_id)
+    print(f"[SAVE_COMPANY_SETTINGS] 保存先ファイル: {settings_file}")
     
     # ディレクトリが存在しない場合は作成
     os.makedirs(os.path.dirname(settings_file), exist_ok=True)
@@ -116,9 +119,20 @@ def save_company_settings(company_id, settings):
     try:
         with open(settings_file, 'w', encoding='utf-8') as f:
             json.dump(settings, f, ensure_ascii=False, indent=2)
+        
+        print(f"[SAVE_COMPANY_SETTINGS] ファイル保存成功: {settings_file}")
+        
+        # 保存後の確認
+        if os.path.exists(settings_file):
+            file_size = os.path.getsize(settings_file)
+            print(f"[SAVE_COMPANY_SETTINGS] 保存ファイルサイズ: {file_size} bytes")
+        
         return True
+        
     except Exception as e:
-        print(f"設定ファイルの保存エラー: {e}")
+        print(f"[SAVE_COMPANY_SETTINGS] 設定ファイルの保存エラー: {e}")
+        import traceback
+        print(f"[SAVE_COMPANY_SETTINGS] エラー詳細: {traceback.format_exc()}")
         return False
 
 def load_companies(company_id=None):
@@ -169,9 +183,18 @@ def save_companies(companies):
     
     Args:
         companies (dict): 企業情報の辞書
+    
+    Returns:
+        bool: 全ての保存が成功した場合True、失敗した場合False
     """
+    print(f"[SAVE_COMPANIES] 保存開始: {len(companies)}社")
+    
+    all_success = True
+    
     # 各企業の設定を個別に保存
     for company_id, company_data in companies.items():
+        print(f"[SAVE_COMPANIES] 会社ID: {company_id} の保存開始")
+        
         settings = {
             "company_id": company_id,
             "company_name": company_data.get("name", company_id),
@@ -180,7 +203,19 @@ def save_companies(companies):
             "last_updated": datetime.now().isoformat(),
             "admins": company_data.get("admins", {})
         }
-        save_company_settings(company_id, settings)
+        
+        print(f"[SAVE_COMPANIES] 管理者数: {len(settings['admins'])}")
+        for admin_name, admin_info in settings['admins'].items():
+            print(f"[SAVE_COMPANIES] 管理者: {admin_name}, パスワード: {admin_info.get('password', 'N/A')[:20]}...")
+        
+        success = save_company_settings(company_id, settings)
+        print(f"[SAVE_COMPANIES] 会社ID: {company_id} の保存結果: {success}")
+        
+        if not success:
+            all_success = False
+    
+    print(f"[SAVE_COMPANIES] 全体保存結果: {all_success}")
+    return all_success
 
 def verify_company_admin(company_id, username, password):
     """会社管理者の認証を行う"""
