@@ -11,6 +11,7 @@ from services.company_service import (
     add_admin,
     hash_password
 )
+from core.database import update_company_admin_password_in_db, verify_company_admin_exists, get_company_admins_from_db
 
 def hash_password_sqlite(password):
     """SQLite用のパスワードハッシュ化（main.pyと同じ形式）"""
@@ -197,8 +198,8 @@ def admin_management_page():
         st.error("会社情報が見つかりません")
         return
     
-    # 管理者一覧を表示
-    st.subheader("管理者一覧")
+    # 管理者情報を表示
+    st.subheader("管理者情報")
     
     admin_data = []
     for username, admin_info in companies[company_id]["admins"].items():
@@ -213,53 +214,82 @@ def admin_management_page():
     else:
         st.info("管理者アカウントがありません")
     
-    # 新規管理者追加フォーム
-    st.subheader("新規管理者追加")
-    with st.form("add_admin_form"):
-        new_username = st.text_input("ユーザー名")
-        new_password = st.text_input("パスワード", type="password")
-        new_email = st.text_input("メールアドレス")
-        submit = st.form_submit_button("管理者を追加")
-        
-        if submit:
-            if not new_username or not new_password:
-                st.error("ユーザー名とパスワードを入力してください")
-            else:
-                success, message = add_admin(company_id, new_username, new_password, new_email)
-                if success:
-                    st.success(message)
-                    st.rerun()
-                else:
-                    st.error(message)
+    # パスワード変更フォーム
+    st.subheader("パスワード変更")
     
-    # 管理者アカウント削除機能
-    st.subheader("管理者アカウント削除")
+    # 管理者選択（自分も含む）
+    admin_list = list(companies[company_id]["admins"].keys())
     
-    # 自分以外の管理者を取得
-    current_username = st.session_state.get("username", "")
-    other_admins = [username for username in companies[company_id]["admins"] if username != current_username]
-    
-    if not other_admins:
-        st.info("削除可能な管理者アカウントがありません")
-        return
-    
-    with st.form("delete_admin_form"):
-        username_to_delete = st.selectbox(
-            "削除する管理者", 
-            other_admins
+    with st.form("change_password_form"):
+        selected_admin = st.selectbox(
+            "パスワードを変更する管理者", 
+            admin_list
         )
         
-        delete_submit = st.form_submit_button("削除")
+        new_password = st.text_input("新しいパスワード", type="password")
+        confirm_password = st.text_input("パスワード確認", type="password")
         
-        if delete_submit and username_to_delete:
-            # 最後の管理者アカウントは削除できないようにする
-            admin_count = len(companies[company_id]["admins"])
-            
-            if admin_count <= 1:
-                st.error("最後の管理者アカウントは削除できません")
+        change_password_submit = st.form_submit_button("パスワードを変更")
+        
+        if change_password_submit:
+            if not new_password:
+                st.error("新しいパスワードを入力してください")
+            elif new_password != confirm_password:
+                st.error("パスワードが一致しません")
             else:
-                # 管理者を削除
-                del companies[company_id]["admins"][username_to_delete]
-                save_companies(companies)
-                st.success(f"管理者 '{username_to_delete}' を削除しました")
-                st.rerun()
+                try:
+                    print(f"[ADMIN_PAGE] パスワード変更開始")
+                    print(f"[ADMIN_PAGE] 会社ID: {company_id}")
+                    print(f"[ADMIN_PAGE] 対象管理者: {selected_admin}")
+                    print(f"[ADMIN_PAGE] 新しいパスワード長: {len(new_password)}")
+                    
+                    # データベースの管理者存在確認
+                    db_admin_exists = verify_company_admin_exists(company_id)
+                    print(f"[ADMIN_PAGE] DB管理者存在確認: {db_admin_exists}")
+                    
+                    # 変更前のパスワードをハッシュ化してログ出力
+                    hashed_new_password = hash_password(new_password)
+                    print(f"[ADMIN_PAGE] ハッシュ化されたパスワード: {hashed_new_password[:20]}...")
+                    
+                    # JSONファイルのパスワードを変更
+                    print(f"[ADMIN_PAGE] JSONファイル更新開始")
+                    companies[company_id]["admins"][selected_admin]["password"] = hashed_new_password
+                    json_success = save_companies(companies)
+                    print(f"[ADMIN_PAGE] JSONファイル更新結果: {json_success}")
+                    
+                    # データベースのパスワードを変更
+                    print(f"[ADMIN_PAGE] データベース更新開始")
+                    print(f"[ADMIN_PAGE] update_company_admin_password_in_db({company_id}, {new_password[:3]}***)")
+                    db_success = update_company_admin_password_in_db(company_id, new_password)
+                    print(f"[ADMIN_PAGE] データベース更新結果: {db_success}")
+                    
+                    # 更新後の確認（デバッグ用）
+                    if db_success:
+                        print(f"[ADMIN_PAGE] データベース更新後の確認実行")
+                        # 更新後の管理者情報を確認
+                        updated_admins = get_company_admins_from_db(company_id)
+                        print(f"[ADMIN_PAGE] 更新後の管理者数: {len(updated_admins)}")
+                        for admin_name, admin_info in updated_admins.items():
+                            print(f"[ADMIN_PAGE] 管理者: {admin_name}, パスワード: {admin_info['password'][:20]}...")
+                    
+                    if json_success and db_success:
+                        st.success(f"管理者 '{selected_admin}' のパスワードを変更しました（JSON・DB両方更新完了）")
+                        print(f"[ADMIN_PAGE] パスワード変更完了: 両方成功")
+                        st.rerun()
+                    elif json_success and not db_success:
+                        st.warning(f"管理者 '{selected_admin}' のパスワードを変更しました（JSONファイルのみ更新、DB更新に失敗）")
+                        print(f"[ADMIN_PAGE] パスワード変更完了: JSONのみ成功")
+                        st.rerun()
+                    elif not json_success and db_success:
+                        st.warning(f"管理者 '{selected_admin}' のパスワードを変更しました（DBのみ更新、JSONファイル更新に失敗）")
+                        print(f"[ADMIN_PAGE] パスワード変更完了: DBのみ成功")
+                        st.rerun()
+                    else:
+                        st.error("パスワード変更に失敗しました（JSON・DB両方とも更新失敗）")
+                        print(f"[ADMIN_PAGE] パスワード変更失敗: 両方失敗")
+                        
+                except Exception as e:
+                    print(f"[ADMIN_PAGE] パスワード変更エラー: {str(e)}")
+                    import traceback
+                    print(f"[ADMIN_PAGE] エラー詳細: {traceback.format_exc()}")
+                    st.error(f"パスワード変更中にエラーが発生しました: {str(e)}")

@@ -611,6 +611,40 @@ def test_connection():
         print(f"[DATABASE] 接続テストエラー: {e}")
         return False
 
+def update_company_admin_password_in_db(company_id, new_password):
+    """会社管理者のパスワードをデータベースで更新"""
+    try:
+        hashed_password = hash_password(new_password)
+        query = """
+            UPDATE users 
+            SET password = ?
+            WHERE company_id = ?
+        """
+        
+        rows_affected = execute_query(query, (hashed_password, company_id))
+        
+        if rows_affected > 0:
+            print(f"[DATABASE] パスワード更新完了: {company_id} ({rows_affected}件)")
+            return True
+        else:
+            print(f"[DATABASE] パスワード更新失敗: 管理者が見つかりません {company_id}")
+            return False
+        
+    except Exception as e:
+        print(f"[DATABASE] パスワード更新エラー: {e}")
+        return False
+
+def verify_company_admin_exists(company_id):
+    """会社管理者が存在するかチェック"""
+    try:
+        query = "SELECT username FROM users WHERE company_id = ?"
+        result = fetch_all(query, (company_id,))
+        return len(result) > 0
+        
+    except Exception as e:
+        print(f"[DATABASE] 管理者存在チェックエラー: {e}")
+        return False
+    
 # モジュール読み込み時に初期化
 if __name__ != "__main__":
     init_db_if_needed()
