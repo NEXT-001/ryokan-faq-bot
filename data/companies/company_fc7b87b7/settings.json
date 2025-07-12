@@ -10,5 +10,11 @@
       "email": "dschoi@yahoo.co.jp",
       "created_at": "2025-07-08T17:37:28.718723"
     }
+  },
+  "line_settings": {
+    "channel_access_token": "Q8wGhsRhpXHhv12jma65Wu6LE0d7uDNstDaMvpR+5NaSf/i9yT024NitkG0RBUxAa6jVWSpIAMFkvlBTjW8G1YiEiwqLnG4pQyESRcJg2jUz07E4P6vGuVHIxKK6qsWYibOQRc3RtmKO7m9zKTreIgdB04t89/1O/w1cDnyilFU=",
+    "channel_secret": "24a884ce6feab5842b7d07b8dc98b9fb",
+    "user_id": "Uaf5a7c56a045525dd3375d3e6e5f7bc6",
+    "low_similarity_threshold": 0.4
   }
 }

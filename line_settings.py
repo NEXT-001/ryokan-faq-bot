@@ -1,6 +1,7 @@
 # line_settings.py
 import streamlit as st
 import os
+import json
 from dotenv import load_dotenv
 from services.line_service import send_line_message
 
@@ -18,10 +19,22 @@ def line_settings_page(company_id=None):
         return
     
     # 現在の設定値を取得
-    load_dotenv()
-    current_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
-    current_secret = os.getenv("LINE_CHANNEL_SECRET", "")
-    current_user_id = os.getenv("LINE_USER_ID", "")
+    settings_path = f"data/companies/{company_id}/settings.json"
+    current_token = ""
+    current_secret = ""
+    current_user_id = ""
+    current_threshold = 0.4
+    
+    try:
+        with open(settings_path, 'r', encoding='utf-8') as f:
+            settings = json.load(f)
+            line_settings = settings.get('line_settings', {})
+            current_token = line_settings.get('channel_access_token', "")
+            current_secret = line_settings.get('channel_secret', "")
+            current_user_id = line_settings.get('user_id', "")
+            current_threshold = line_settings.get('low_similarity_threshold', 0.4)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
     
     # LINE設定フォーム
     with st.form("line_settings_form"):
@@ -62,7 +75,7 @@ def line_settings_page(company_id=None):
             "LINE通知を送信する類似度しきい値", 
             min_value=0.0, 
             max_value=0.6, 
-            value=0.4,
+            value=current_threshold,
             step=0.05,
             help="この値より低い類似度の場合、LINE通知が送信されます"
         )
@@ -71,35 +84,31 @@ def line_settings_page(company_id=None):
         submit = st.form_submit_button("設定を保存")
         
         if submit:
-            # .envファイルの既存の内容を読み込む
-            env_content = {}
             try:
-                with open(".env", "r", encoding="utf-8") as f:
-                    for line in f:
-                        if line.strip() and not line.startswith("#"):
-                            key, value = line.strip().split("=", 1)
-                            env_content[key] = value
-            except FileNotFoundError:
-                pass  # .envファイルがない場合は新規作成
-            
-            # 更新する値を設定
-            env_content["LINE_CHANNEL_ACCESS_TOKEN"] = f'"{channel_token}"'
-            env_content["LINE_CHANNEL_SECRET"] = f'"{channel_secret}"'
-            env_content["LINE_USER_ID"] = f'"{user_id}"'
-            env_content["LOW_SIMILARITY_THRESHOLD"] = str(low_similarity_threshold)
-            
-            # 環境変数も更新
-            os.environ["LINE_CHANNEL_ACCESS_TOKEN"] = channel_token
-            os.environ["LINE_CHANNEL_SECRET"] = channel_secret
-            os.environ["LINE_USER_ID"] = user_id
-            os.environ["LOW_SIMILARITY_THRESHOLD"] = str(low_similarity_threshold)
-            
-            # .envファイルに書き込む
-            with open(".env", "w", encoding="utf-8") as f:
-                for key, value in env_content.items():
-                    f.write(f"{key}={value}\n")
-            
-            st.success("LINE設定を保存しました")
+                # 既存のsettings.jsonを読み込む
+                settings = {}
+                try:
+                    with open(settings_path, 'r', encoding='utf-8') as f:
+                        settings = json.load(f)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    pass
+                
+                # LINE設定を更新
+                settings['line_settings'] = {
+                    'channel_access_token': channel_token,
+                    'channel_secret': channel_secret,
+                    'user_id': user_id,
+                    'low_similarity_threshold': low_similarity_threshold
+                }
+                
+                # settings.jsonに保存
+                os.makedirs(os.path.dirname(settings_path), exist_ok=True)
+                with open(settings_path, 'w', encoding='utf-8') as f:
+                    json.dump(settings, f, ensure_ascii=False, indent=2)
+                
+                st.success("LINE設定を保存しました")
+            except Exception as e:
+                st.error(f"設定の保存に失敗しました: {e}")
     
     # テスト通知セクション
     st.subheader("LINE通知テスト")
@@ -118,7 +127,8 @@ def line_settings_page(company_id=None):
                 question=test_message,
                 answer="これはテスト通知です。",
                 similarity_score=0.3,
-                room_number=test_room
+                room_number=test_room,
+                company_id=company_id
             )
             
             if success:

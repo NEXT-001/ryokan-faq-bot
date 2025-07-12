@@ -14,6 +14,7 @@ import pickle
 import numpy as np
 import json
 from dotenv import load_dotenv
+from services.payment_service import payment_management_page
 
 # パスを追加してモジュールをインポート可能にする
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1075,24 +1076,24 @@ def login_page(company_id):
                     st.error(f"ログイン処理でエラーが発生しました: {e}")
             
             # 従来の企業ID・ユーザー名でのログイン
-            elif admin_company_id and admin_username and admin_password:
-                try:
-                    # 従来のログイン処理
-                    success, message = login_user(admin_company_id, admin_username, admin_password)
-                    if success:
-                        st.success(f"{message} ログインしました。")
+            # elif admin_company_id and admin_username and admin_password:
+            #     try:
+            #         # 従来のログイン処理
+            #         success, message = login_user(admin_company_id, admin_username, admin_password)
+            #         if success:
+            #             st.success(f"{message} ログインしました。")
                         
-                        # URLパラメータを更新してページを再読み込み
-                        st.query_params.mode = "admin"
-                        st.query_params.company = admin_company_id
-                        st.query_params.logged_in = "true"
+            #             # URLパラメータを更新してページを再読み込み
+            #             st.query_params.mode = "admin"
+            #             st.query_params.company = admin_company_id
+            #             st.query_params.logged_in = "true"
                         
-                        st.success("管理者ページに移動しています...")
-                        st.rerun()
-                    else:
-                        st.error(message)
-                except Exception as e:
-                    st.error(f"ログイン処理でエラーが発生しました: {e}")
+            #             st.success("管理者ページに移動しています...")
+            #             st.rerun()
+            #         else:
+            #             st.error(message)
+            #     except Exception as e:
+            #         st.error(f"ログイン処理でエラーが発生しました: {e}")
             else:
                 st.error("メールアドレスとパスワード、または企業ID・ユーザー名・パスワードを入力してください")
     
@@ -1136,7 +1137,7 @@ def admin_dashboard(company_id):
                 # 企業管理者メニュー
                 admin_page_option = st.radio(
                     "管理メニュー",
-                    ["FAQ管理", "FAQ履歴", "LINE通知設定", "管理者設定", "FAQプレビュー"]
+                    ["FAQ管理", "FAQ履歴", "LINE通知設定", "管理者設定", "FAQプレビュー", "決済管理"]
                 )
             
             st.markdown("---")
@@ -1187,6 +1188,8 @@ def admin_dashboard(company_id):
                 admin_management_page()
             elif admin_page_option == "FAQプレビュー":
                 faq_preview_page(company_id)
+            elif admin_page_option == "決済管理":
+                payment_management_page(company_id)
                 
     except Exception as e:
         st.error(f"管理機能の読み込み中にエラーが発生しました: {e}")

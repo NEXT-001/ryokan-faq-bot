@@ -4,6 +4,7 @@ LINE Bot SDK とダイレクト API 両方の実装をサポート
 line_service.py
 """
 import os
+import json
 import requests
 import streamlit as st
 from dotenv import load_dotenv
@@ -19,36 +20,35 @@ except ImportError:
     LINE_SDK_AVAILABLE = False
     print("LINE Bot SDKがインストールされていません。直接APIを使用します。")
 
-def load_line_credentials():
+def load_line_credentials(company_id):
     """
-    .envファイルまたはStreamlit SecretsからLINE APIの認証情報を読み込む
+    会社固有のsettings.jsonファイルからLINE APIの認証情報を読み込む
+    
+    Args:
+        company_id (str): 会社ID
+    
+    Returns:
+        tuple: (channel_access_token, channel_secret, user_id)
     """
-    # Streamlit Cloudsでは環境変数からシークレットを取得
-    channel_access_token = None
-    channel_secret = None
-    user_id = None
-
+    if not company_id:
+        return None, None, None
+    
+    settings_path = f"data/companies/{company_id}/settings.json"
+    
     try:
-        if hasattr(st, 'secrets') and isinstance(st.secrets, dict):
-            if 'LINE_CHANNEL_ACCESS_TOKEN' in st.secrets:
-                channel_access_token = st.secrets['LINE_CHANNEL_ACCESS_TOKEN']
-            if 'LINE_CHANNEL_SECRET' in st.secrets:
-                channel_secret = st.secrets['LINE_CHANNEL_SECRET']
-            if 'LINE_USER_ID' in st.secrets:
-                user_id = st.secrets['LINE_USER_ID']
-    except Exception as e:
-        print(f"Streamlit Secretsの読み込みエラー: {e}")
-    
-    # Secretsから取得できなかった場合は.envファイルを確認
-    if not channel_access_token or not channel_secret or not user_id:
-        load_dotenv()
-        channel_access_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-        channel_secret = os.getenv("LINE_CHANNEL_SECRET")
-        user_id = os.getenv("LINE_USER_ID")
-    
-    return channel_access_token, channel_secret, user_id
+        with open(settings_path, 'r', encoding='utf-8') as f:
+            settings = json.load(f)
+            line_settings = settings.get('line_settings', {})
+            channel_access_token = line_settings.get('channel_access_token')
+            channel_secret = line_settings.get('channel_secret')
+            user_id = line_settings.get('user_id')
+            
+            return channel_access_token, channel_secret, user_id
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+        print(f"LINE設定の読み込みエラー ({company_id}): {e}")
+        return None, None, None
 
-def send_line_message(question, answer=None, similarity_score=None, room_number=""):
+def send_line_message(question, answer=None, similarity_score=None, room_number="", company_id=None):
     """
     LINEメッセージを送信する
     SDK利用可能な場合はSDKを使用し、なければ直接APIを呼び出す
@@ -58,8 +58,13 @@ def send_line_message(question, answer=None, similarity_score=None, room_number=
     answer (str, optional): システムからの回答
     similarity_score (float, optional): 類似度スコア
     room_number (str, optional): 部屋番号
+    company_id (str, optional): 会社ID
     """
-    channel_access_token, channel_secret, user_id = load_line_credentials()
+    if not company_id:
+        print("会社IDが指定されていません")
+        return False
+    
+    channel_access_token, channel_secret, user_id = load_line_credentials(company_id)
     
     if not channel_access_token or not user_id:
         print("LINE APIの認証情報が設定されていません")
