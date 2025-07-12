@@ -22,3 +22,13 @@ venv/
 ./devcontainer
 apitest.py
 
+# 設定ファイル
+# 会社別設定
+/data/companies/*/settings.json
+/data/companies/*/faq.csv
+/data/companies/*/history.csv
+data/companies/*/faq_with_embeddings.pkl
+
+# 設定ファイル
+/data/
+*.db

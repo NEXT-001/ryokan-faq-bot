@@ -4,11 +4,11 @@ core/database.py
 """
 import sqlite3
 import os
-import hashlib
 import threading
 from contextlib import contextmanager
 from datetime import datetime
 from utils.constants import get_data_path, DB_NAME
+from utils.auth_utils import hash_password
 
 # スレッドローカルストレージ
 _local = threading.local()
@@ -110,12 +110,42 @@ def initialize_database():
                 )
             """)
             
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS line_settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    company_id TEXT NOT NULL UNIQUE,
+                    channel_access_token TEXT,
+                    channel_secret TEXT,
+                    user_id TEXT,
+                    low_similarity_threshold REAL DEFAULT 0.4,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS faq_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    company_id TEXT NOT NULL,
+                    question TEXT NOT NULL,
+                    answer TEXT NOT NULL,
+                    similarity_score REAL,
+                    user_ip TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+                )
+            """)
+            
             # インデックスの作成
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_company_admins_company_id ON company_admins(company_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_company_admins_email ON company_admins(email)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_company_id ON users(company_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_faq_company_id ON faq_data(company_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_line_settings_company_id ON line_settings(company_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_faq_history_company_id ON faq_history(company_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_faq_history_created_at ON faq_history(created_at)")
             
         print("[DATABASE] データベース初期化完了")
         return True
@@ -128,9 +158,7 @@ def initialize_database():
 # company_service.py で必要な関数群を追加
 # =============================================================================
 
-def hash_password(password):
-    """パスワードをハッシュ化する"""
-    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+# hash_password関数はutils.auth_utilsから使用
 
 def init_company_tables():
     """会社関連テーブルを初期化（initialize_databaseのエイリアス）"""
@@ -540,6 +568,119 @@ def check_database_integrity():
     except Exception as e:
         print(f"[DATABASE] 整合性チェックエラー: {e}")
         return False
+
+# =============================================================================
+# LINE設定関連の関数群
+# =============================================================================
+
+def save_line_settings_to_db(company_id, channel_access_token, channel_secret, user_id, low_similarity_threshold=0.4):
+    """LINE設定をデータベースに保存"""
+    try:
+        query = """
+            INSERT OR REPLACE INTO line_settings 
+            (company_id, channel_access_token, channel_secret, user_id, low_similarity_threshold, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """
+        updated_at = datetime.now().isoformat()
+        
+        execute_query(query, (company_id, channel_access_token, channel_secret, user_id, low_similarity_threshold, updated_at))
+        print(f"[DATABASE] LINE設定保存完了: {company_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[DATABASE] LINE設定保存エラー: {e}")
+        return False
+
+def get_line_settings_from_db(company_id):
+    """LINE設定をデータベースから取得"""
+    try:
+        query = "SELECT * FROM line_settings WHERE company_id = ?"
+        result = fetch_dict_one(query, (company_id,))
+        
+        if result:
+            return {
+                "channel_access_token": result["channel_access_token"],
+                "channel_secret": result["channel_secret"],
+                "user_id": result["user_id"],
+                "low_similarity_threshold": result["low_similarity_threshold"]
+            }
+        return None
+        
+    except Exception as e:
+        print(f"[DATABASE] LINE設定取得エラー: {e}")
+        return None
+
+def delete_line_settings_from_db(company_id):
+    """LINE設定をデータベースから削除"""
+    try:
+        query = "DELETE FROM line_settings WHERE company_id = ?"
+        execute_query(query, (company_id,))
+        print(f"[DATABASE] LINE設定削除完了: {company_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[DATABASE] LINE設定削除エラー: {e}")
+        return False
+
+# =============================================================================
+# FAQ履歴関連の関数群
+# =============================================================================
+
+def save_faq_history_to_db(company_id, question, answer, similarity_score=None, user_ip=None):
+    """FAQ履歴をデータベースに保存"""
+    try:
+        query = """
+            INSERT INTO faq_history 
+            (company_id, question, answer, similarity_score, user_ip, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """
+        created_at = datetime.now().isoformat()
+        
+        execute_query(query, (company_id, question, answer, similarity_score, user_ip, created_at))
+        print(f"[DATABASE] FAQ履歴保存完了: {company_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[DATABASE] FAQ履歴保存エラー: {e}")
+        return False
+
+def get_faq_history_from_db(company_id, limit=100):
+    """FAQ履歴をデータベースから取得"""
+    try:
+        query = """
+            SELECT * FROM faq_history 
+            WHERE company_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT ?
+        """
+        results = fetch_dict(query, (company_id, limit))
+        return results
+        
+    except Exception as e:
+        print(f"[DATABASE] FAQ履歴取得エラー: {e}")
+        return []
+
+def delete_faq_history_from_db(company_id):
+    """FAQ履歴をデータベースから削除"""
+    try:
+        query = "DELETE FROM faq_history WHERE company_id = ?"
+        execute_query(query, (company_id,))
+        print(f"[DATABASE] FAQ履歴削除完了: {company_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[DATABASE] FAQ履歴削除エラー: {e}")
+        return False
+
+def count_faq_history(company_id):
+    """FAQ履歴の件数を取得"""
+    try:
+        query = "SELECT COUNT(*) FROM faq_history WHERE company_id = ?"
+        result = fetch_one(query, (company_id,))
+        return result[0] if result else 0
+    except Exception as e:
+        print(f"[DATABASE] FAQ履歴件数取得エラー: {e}")
+        return 0
 
 # 便利な関数
 def table_exists(table_name):

@@ -22,7 +22,7 @@ APP_VERSION = "1.0.0"
 APP_DESCRIPTION = "FAQ自動応答システム"
 
 # ファイル名定数
-SETTINGS_FILE = "settings.json"
+# SETTINGS_FILE = "settings.json"
 FAQ_FILE = "faq.csv"
 CHAT_HISTORY_FILE = "chat_history.json"
 USER_DATA_FILE = "users.json"
@@ -139,13 +139,6 @@ def get_data_path(company_id=None):
     
     # 共通データディレクトリ
     return base_path
-
-def get_settings_file_path(company_id=None):
-    """設定ファイルのパスを取得"""
-    if company_id:
-        return os.path.join(get_data_path(company_id), SETTINGS_FILE)
-    else:
-        return os.path.join(get_data_path(), SETTINGS_FILE)
 
 def ensure_directory_exists(directory_path):
     """ディレクトリが存在しない場合は作成する"""
