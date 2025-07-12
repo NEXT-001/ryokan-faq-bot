@@ -1,9 +1,51 @@
 # history_service.py
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 from config.settings import get_data_path
+
+def cleanup_old_history(company_id=None):
+    """
+    1週間以上古い履歴データを削除する
+    
+    Args:
+        company_id (str, optional): 会社ID（指定がない場合はデモ企業）
+    """
+    # 会社IDが指定されていない場合はデモ企業を使用
+    if not company_id:
+        company_id = "demo-company"
+    
+    # 会社の履歴ファイルのパス
+    history_file = os.path.join(get_data_path(), "companies", company_id, "history.csv")
+    
+    if os.path.exists(history_file):
+        try:
+            # 履歴データを読み込む
+            df = pd.read_csv(history_file)
+            
+            if len(df) > 0:
+                # 1週間前の日時を計算
+                one_week_ago = datetime.now() - timedelta(days=7)
+                
+                # timestamp列をdatetime型に変換
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                
+                # 1週間以内のデータのみを保持
+                df_recent = df[df['timestamp'] >= one_week_ago]
+                
+                # 元の形式（文字列）に戻す
+                df_recent['timestamp'] = df_recent['timestamp'].dt.strftime("%Y-%m-%d %H:%M:%S")
+                
+                # ファイルを更新（1週間以内のデータのみ保存）
+                df_recent.to_csv(history_file, index=False, quoting=1)
+                
+                removed_count = len(df) - len(df_recent)
+                if removed_count > 0:
+                    print(f"古い履歴データを{removed_count}件削除しました: {history_file}")
+                
+        except Exception as e:
+            print(f"履歴クリーンアップエラー: {e}")
 
 def log_interaction(question, answer, input_tokens, output_tokens, company_id=None, user_info=""):
     """
@@ -57,6 +99,10 @@ def log_interaction(question, answer, input_tokens, output_tokens, company_id=No
             df.to_csv(history_file, mode='a', header=False, index=False, quoting=1)
         
         print(f"対話を記録しました: {history_file}")
+        
+        # 新しい記録の後に古い履歴をクリーンアップ
+        cleanup_old_history(company_id)
+        
     except Exception as e:
         print(f"対話記録エラー: {e}")
 
