@@ -23,11 +23,11 @@ pip install -r requirements.txt
 # Generate embeddings (required on first run or when FAQ data changes)
 python -m services.embedding_service
 
-# Start the main application
-streamlit run main.py
-
-# Alternative simple test version
+# Start the main application (NEW - recommended)
 streamlit run app.py
+
+# Legacy compatibility (still works)
+streamlit run main.py
 ```
 
 ### Environment Configuration
@@ -37,14 +37,22 @@ The application supports both test mode and production mode:
 
 ## Architecture
 
-### Core Structure
-- `main.py`: Primary application entry point with URL routing and multi-mode support
-- `app.py`: Simple test version for basic functionality verification
-- `config/settings.py`: Configuration management and API key loading
+### Core Structure (Refactored)
+- `app.py`: NEW primary application entry point (recommended)
+- `main.py`: Legacy compatibility entry point
+- `core/app_router.py`: URL routing and application flow control
+- `config/app_config.py`: Unified configuration management
+- `pages/`: Page-specific UI components (user_page, admin_page, registration_page, verify_page)
 - `services/`: Core business logic modules
 - `core/`: Database and authentication management
-- `components/`: UI utilities and shared components
-- `utils/`: Helper functions and constants
+- `components/`: UI utilities and shared components  
+- `utils/`: Refactored utility functions (auth_utils, company_utils, db_utils)
+
+### Refactoring Benefits
+- **Reduced Code Duplication**: `hash_password` unified across all modules
+- **Improved Maintainability**: main.py reduced from 1400+ lines to manageable components
+- **Better Organization**: Clear separation of concerns between pages, services, and utilities
+- **Enhanced Modularity**: Each page is now independently testable and maintainable
 
 ### Service Layer
 - `chat_service.py`: Handles chat responses and semantic search

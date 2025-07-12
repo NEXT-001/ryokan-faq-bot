@@ -1,16 +1,4 @@
 {
-  "company_id": "demo-company",
-  "company_name": "デモ企業",
-  "created_at": "2025-06-11T16:44:09.374831",
-  "faq_count": 0,
-  "last_updated": "2025-07-10T12:37:16.202155",
-  "admins": {
-    "admin": {
-      "password": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
-      "email": "admin@example.com",
-      "created_at": "2025-06-11T16:44:09.374831"
-    }
-  },
   "line_settings": {
     "channel_access_token": "Q8wGhsRhpXHhv12jma65Wu6LE0d7uDNstDaMvpR+5NaSf/i9yT024NitkG0RBUxAa6jVWSpIAMFkvlBTjW8G1YiEiwqLnG4pQyESRcJg2jUz07E4P6vGuVHIxKK6qsWYibOQRc3RtmKO7m9zKTreIgdB04t89/1O/w1cDnyilFU=",
     "channel_secret": "24a884ce6feab5842b7d07b8dc98b9fb",

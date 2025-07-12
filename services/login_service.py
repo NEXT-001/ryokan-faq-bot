@@ -2,20 +2,15 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-import hashlib
 from datetime import datetime
 from services.company_service import (
     load_companies,
     save_companies,
     verify_company_admin,
-    add_admin,
-    hash_password
+    add_admin
 )
 from core.database import update_company_admin_password_in_db, verify_company_admin_exists, get_company_admins_from_db
-
-def hash_password_sqlite(password):
-    """SQLite用のパスワードハッシュ化（main.pyと同じ形式）"""
-    return hashlib.sha256(password.encode()).hexdigest()
+from utils.auth_utils import hash_password
 
 def login_user(company_id, username, password):
     """
