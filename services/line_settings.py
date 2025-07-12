@@ -4,6 +4,7 @@ import os
 import json
 from dotenv import load_dotenv
 from services.line_service import send_line_message
+from core.database import save_line_settings_to_db, get_line_settings_from_db
 
 def line_settings_page(company_id=None):
     """
@@ -18,23 +19,18 @@ def line_settings_page(company_id=None):
         st.error("会社情報が見つかりません。ログインしてください。")
         return
     
-    # 現在の設定値を取得
-    settings_path = f"data/companies/{company_id}/settings.json"
+    # 現在の設定値をデータベースから取得
     current_token = ""
     current_secret = ""
     current_user_id = ""
     current_threshold = 0.4
     
-    try:
-        with open(settings_path, 'r', encoding='utf-8') as f:
-            settings = json.load(f)
-            line_settings = settings.get('line_settings', {})
-            current_token = line_settings.get('channel_access_token', "")
-            current_secret = line_settings.get('channel_secret', "")
-            current_user_id = line_settings.get('user_id', "")
-            current_threshold = line_settings.get('low_similarity_threshold', 0.4)
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
+    line_settings = get_line_settings_from_db(company_id)
+    if line_settings:
+        current_token = line_settings.get('channel_access_token', "")
+        current_secret = line_settings.get('channel_secret', "")
+        current_user_id = line_settings.get('user_id', "")
+        current_threshold = line_settings.get('low_similarity_threshold', 0.4)
     
     # LINE設定フォーム
     with st.form("line_settings_form"):
@@ -85,28 +81,19 @@ def line_settings_page(company_id=None):
         
         if submit:
             try:
-                # 既存のsettings.jsonを読み込む
-                settings = {}
-                try:
-                    with open(settings_path, 'r', encoding='utf-8') as f:
-                        settings = json.load(f)
-                except (FileNotFoundError, json.JSONDecodeError):
-                    pass
+                # LINE設定をデータベースに保存
+                success = save_line_settings_to_db(
+                    company_id=company_id,
+                    channel_access_token=channel_token,
+                    channel_secret=channel_secret,
+                    user_id=user_id,
+                    low_similarity_threshold=low_similarity_threshold
+                )
                 
-                # LINE設定を更新
-                settings['line_settings'] = {
-                    'channel_access_token': channel_token,
-                    'channel_secret': channel_secret,
-                    'user_id': user_id,
-                    'low_similarity_threshold': low_similarity_threshold
-                }
-                
-                # settings.jsonに保存
-                os.makedirs(os.path.dirname(settings_path), exist_ok=True)
-                with open(settings_path, 'w', encoding='utf-8') as f:
-                    json.dump(settings, f, ensure_ascii=False, indent=2)
-                
-                st.success("LINE設定を保存しました")
+                if success:
+                    st.success("LINE設定を保存しました")
+                else:
+                    st.error("設定の保存に失敗しました")
             except Exception as e:
                 st.error(f"設定の保存に失敗しました: {e}")
     

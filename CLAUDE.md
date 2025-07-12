@@ -66,7 +66,7 @@ The application supports both test mode and production mode:
 ### Database Architecture
 - SQLite database (`data/faq_database.db`) for user and company data
 - Company-specific data stored in `data/companies/{company_id}/`
-- Each company has: `faq.csv`, `faq_with_embeddings.pkl`, `history.csv`, `settings.json`
+- Each company has: `faq.csv`, `faq_with_embeddings.pkl`, `history.csv`
 
 ### URL Routing System
 The application supports multiple access modes via URL parameters:

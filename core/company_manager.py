@@ -258,27 +258,27 @@ def create_company_folder_structure(company_id, company_name):
             print(f"[FILE EXISTS] {history_csv_path}")
         
         # 4. 会社設定ファイルを作成（JSON）
-        settings_path = os.path.join(company_folder, "settings.json")
-        if not os.path.exists(settings_path):
-            settings = {
-                "company_id": company_id,
-                "company_name": company_name,
-                "created_at": datetime.now().isoformat(),
-                "faq_count": 5,  # 初期FAQの数
-                "last_updated": datetime.now().isoformat()
-            }
+        # settings_path = os.path.join(company_folder, "settings.json")
+        # if not os.path.exists(settings_path):
+        #     settings = {
+        #         "company_id": company_id,
+        #         "company_name": company_name,
+        #         "created_at": datetime.now().isoformat(),
+        #         "faq_count": 5,  # 初期FAQの数
+        #         "last_updated": datetime.now().isoformat()
+        #     }
             
-            try:
-                with open(settings_path, 'w', encoding='utf-8') as f:
-                    json.dump(settings, f, ensure_ascii=False, indent=2)
-                print(f"[FILE CREATED] {settings_path}")
-            except Exception as e:
-                print(f"[FILE ERROR] 設定JSON作成失敗: {e}")
-        else:
-            print(f"[FILE EXISTS] {settings_path}")
+        #     try:
+        #         with open(settings_path, 'w', encoding='utf-8') as f:
+        #             json.dump(settings, f, ensure_ascii=False, indent=2)
+        #         print(f"[FILE CREATED] {settings_path}")
+        #     except Exception as e:
+        #         print(f"[FILE ERROR] 設定JSON作成失敗: {e}")
+        # else:
+        #     print(f"[FILE EXISTS] {settings_path}")
         
         # 最終確認
-        required_files = ["faq.csv", "faq_with_embeddings.pkl", "history.csv", "settings.json"]
+        required_files = ["faq.csv", "faq_with_embeddings.pkl", "history.csv"]
         all_created = True
         for file_name in required_files:
             file_path = os.path.join(company_folder, file_name)
@@ -318,7 +318,7 @@ def get_company_folder_info(company_id):
     }
     
     if info["folder_exists"]:
-        files_to_check = ["faq.csv", "faq_with_embeddings.pkl", "history.csv", "settings.json"]
+        files_to_check = ["faq.csv", "faq_with_embeddings.pkl", "history.csv"]
         for file_name in files_to_check:
             file_path = os.path.join(folder_path, file_name)
             if os.path.exists(file_path):

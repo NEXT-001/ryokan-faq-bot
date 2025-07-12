@@ -245,26 +245,26 @@ def create_company_folder_structure(company_id, company_name, password, email):
             print(f"[FILE CREATED] {history_csv_path}")
         
         # 4. 会社設定ファイルを作成（JSON）
-        settings_path = os.path.join(company_folder, "settings.json")
-        if not os.path.exists(settings_path):
-            settings = {
-                "company_id": company_id,
-                "company_name": company_name,
-                "created_at": datetime.now().isoformat(),
-                "faq_count": 5,  # 初期FAQの数
-                "last_updated": datetime.now().isoformat(),
-                "admins": {
-                    "admin": {
-                        "password": hash_password(password),
-                        "email": email,
-                        "created_at": datetime.now().isoformat()
-                    }
-                }
-            }
+        # settings_path = os.path.join(company_folder, "settings.json")
+        # if not os.path.exists(settings_path):
+        #     settings = {
+        #         "company_id": company_id,
+        #         "company_name": company_name,
+        #         "created_at": datetime.now().isoformat(),
+        #         "faq_count": 5,  # 初期FAQの数
+        #         "last_updated": datetime.now().isoformat(),
+        #         "admins": {
+        #             "admin": {
+        #                 "password": hash_password(password),
+        #                 "email": email,
+        #                 "created_at": datetime.now().isoformat()
+        #             }
+        #         }
+        #     }
             
-            with open(settings_path, 'w', encoding='utf-8') as f:
-                json.dump(settings, f, ensure_ascii=False, indent=2)
-            print(f"[FILE CREATED] {settings_path}")
+        #     with open(settings_path, 'w', encoding='utf-8') as f:
+        #         json.dump(settings, f, ensure_ascii=False, indent=2)
+        #     print(f"[FILE CREATED] {settings_path}")
         
         print(f"[SUCCESS] 会社フォルダ構造を作成しました: data/companies/{company_id}")
         return True

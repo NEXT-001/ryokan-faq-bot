@@ -70,7 +70,7 @@ def check_config_files():
     
     # 重要な設定ファイル
     config_files = [
-        os.path.join(get_data_path("demo-company"), "settings.json"),
+        # os.path.join(get_data_path("demo-company"), "settings.json"),
         os.path.join(get_data_path("demo-company"), "faq.csv"),
         ".env",
         "requirements.txt"
@@ -151,23 +151,23 @@ def show_company_info_debug():
     company_id = st.session_state.get("selected_company", "demo-company")
     
     # 設定ファイルの状態
-    settings_file = os.path.join(get_data_path(company_id), "settings.json")
+    # settings_file = os.path.join(get_data_path(company_id), "settings.json")
     
-    with st.expander(f"📄 {company_id} 設定ファイル"):
-        st.write(f"**パス:** `{settings_file}`")
-        st.write(f"**存在:** {os.path.exists(settings_file)}")
+    # with st.expander(f"📄 {company_id} 設定ファイル"):
+    #     st.write(f"**パス:** `{settings_file}`")
+    #     st.write(f"**存在:** {os.path.exists(settings_file)}")
         
-        if os.path.exists(settings_file):
-            try:
-                import json
-                with open(settings_file, 'r', encoding='utf-8') as f:
-                    settings = json.load(f)
+    #     if os.path.exists(settings_file):
+    #         try:
+    #             import json
+    #             with open(settings_file, 'r', encoding='utf-8') as f:
+    #                 settings = json.load(f)
                 
-                st.json(settings)
-            except Exception as e:
-                st.error(f"ファイル読み込みエラー: {e}")
-        else:
-            st.warning("設定ファイルが存在しません")
+    #             st.json(settings)
+    #         except Exception as e:
+    #             st.error(f"ファイル読み込みエラー: {e}")
+    #     else:
+    #         st.warning("設定ファイルが存在しません")
     
     # FAQファイルの状態
     faq_file = os.path.join(get_data_path(company_id), "faq.csv")

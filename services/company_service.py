@@ -14,17 +14,6 @@ from core.database import (
     update_company_faq_count_in_db, save_line_settings_to_db, get_line_settings_from_db
 )
 
-def get_settings_file_path(company_id):
-    """会社IDに基づいてsettings.jsonのパスを取得"""
-    if company_id:
-        # 会社別のディレクトリからsettings.jsonを取得
-        company_dir = get_data_path(company_id)
-        return os.path.join(company_dir, "settings.json")
-    else:
-        # 共通ディレクトリからsettings.jsonを取得
-        base_dir = get_data_path()
-        return os.path.join(base_dir, "settings.json")
-
 def load_company_settings(company_id):
     """会社設定を読み込む（SQLite + JSONファイル統合）"""
     try:

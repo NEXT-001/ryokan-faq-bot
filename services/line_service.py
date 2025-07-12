@@ -9,6 +9,7 @@ import requests
 import streamlit as st
 from dotenv import load_dotenv
 from datetime import datetime
+from core.database import get_line_settings_from_db
 
 # LINE Bot SDK のインポートを試みる（インストールされていない場合のエラーを防止）
 try:
@@ -22,7 +23,7 @@ except ImportError:
 
 def load_line_credentials(company_id):
     """
-    会社固有のsettings.jsonファイルからLINE APIの認証情報を読み込む
+    データベースからLINE APIの認証情報を読み込む
     
     Args:
         company_id (str): 会社ID
@@ -33,18 +34,17 @@ def load_line_credentials(company_id):
     if not company_id:
         return None, None, None
     
-    settings_path = f"data/companies/{company_id}/settings.json"
-    
     try:
-        with open(settings_path, 'r', encoding='utf-8') as f:
-            settings = json.load(f)
-            line_settings = settings.get('line_settings', {})
+        line_settings = get_line_settings_from_db(company_id)
+        if line_settings:
             channel_access_token = line_settings.get('channel_access_token')
             channel_secret = line_settings.get('channel_secret')
             user_id = line_settings.get('user_id')
             
             return channel_access_token, channel_secret, user_id
-    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+        else:
+            return None, None, None
+    except Exception as e:
         print(f"LINE設定の読み込みエラー ({company_id}): {e}")
         return None, None, None
 
