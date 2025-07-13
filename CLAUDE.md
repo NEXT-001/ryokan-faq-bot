@@ -32,7 +32,7 @@ streamlit run main.py
 
 ### Environment Configuration
 The application supports both test mode and production mode:
-- Test mode: Set `TEST_MODE=true` in .env (no API key required)
+- Test mode: Set `TEST_MODE=true` in .env (no API key required, automatically enabled if API keys missing)
 - Production mode: Set `ANTHROPIC_API_KEY` and `VOYAGE_API_KEY` in .env
 
 ## Architecture
@@ -62,6 +62,7 @@ The application supports both test mode and production mode:
 - `company_service.py`: Multi-company data management
 - `email_service.py`: Email notifications and verification
 - `line_service.py`: LINE Bot integration
+- `payment_service.py`: Payment management functionality
 
 ### Database Architecture
 - SQLite database (`data/faq_database.db`) for user and company data
@@ -70,8 +71,8 @@ The application supports both test mode and production mode:
 
 ### URL Routing System
 The application supports multiple access modes via URL parameters:
-- `?mode=user&company_id=demo-company`: User FAQ interface
-- `?mode=admin&company_id=demo-company`: Admin management interface
+- `?mode=user&company=demo-company`: User FAQ interface
+- `?mode=admin&company=demo-company`: Admin management interface
 - `?mode=reg`: 14-day trial registration
 - `?token=xxx`: Email verification
 
@@ -80,8 +81,8 @@ The application supports multiple access modes via URL parameters:
 - **Production Mode**: Uses Anthropic Claude for responses and VoyageAI for embeddings
 
 ## Default Accounts
-- Admin: username `admin`, password `admin123`
-- Test user: username `user`, password `user` (test mode only)
+- Super Admin (test mode only): company_id `admin`, username `admin`, password `admin`
+- Demo Company Admin: company_id `demo-company`, username `admin`, password `admin123`
 
 ## Data Management
 
