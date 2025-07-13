@@ -168,10 +168,6 @@ def admin_dashboard(company_id):
         # タイトル表示
         st.title(f"💬 {company_name} - 管理画面")
         
-        # テストモード表示
-        if is_test_mode():
-            st.info("📝 テストモードで実行中です")
-        
         # サイドバーのナビゲーション
         with st.sidebar:
             st.header(f"ようこそ、{st.session_state.get('username', '')}さん")

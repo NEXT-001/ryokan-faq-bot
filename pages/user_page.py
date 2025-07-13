@@ -44,18 +44,6 @@ def user_page(company_id):
     # タイトル表示
     st.title(f"💬 {company_name} FAQチャットボット")
     
-    # テストモードの場合はヒントを表示
-    try:
-        if is_test_mode():
-            st.info("""
-            **テストモードで実行中です**
-            
-            以下のキーワードを含む質問に回答できます:
-            チェックイン, チェックアウト, 駐車場, wi-fi, アレルギー, 部屋, 温泉, 食事, 子供, 観光
-            """)
-    except:
-        st.info("⚠️ システムの一部機能が利用できません。基本的なチャット機能のみ動作します。")
-    
     # セッション状態の初期化
     if 'conversation_history' not in st.session_state:
         st.session_state.conversation_history = []
