@@ -337,7 +337,7 @@ def authenticate_user_by_email(email, password):
             return True, {
                 "id": result["id"],
                 "company_id": result["company_id"],
-                "company_name": result["company_name"],
+                "company_name": result["company_name"].strip(),
                 "name": result["name"],
                 "email": result["email"]
             }
@@ -620,6 +620,90 @@ def delete_line_settings_from_db(company_id):
         
     except Exception as e:
         print(f"[DATABASE] LINE設定削除エラー: {e}")
+        return False
+
+# =============================================================================
+# FAQデータ関連の関数群
+# =============================================================================
+
+def save_faq_to_db(company_id, question, answer):
+    """FAQデータをデータベースに保存"""
+    try:
+        query = """
+            INSERT INTO faq_data (company_id, question, answer, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+        """
+        current_time = datetime.now().isoformat()
+        
+        execute_query(query, (company_id, question, answer, current_time, current_time))
+        print(f"[DATABASE] FAQ保存完了: {company_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[DATABASE] FAQ保存エラー: {e}")
+        return False
+
+def get_faq_data_from_db(company_id):
+    """会社のFAQデータをデータベースから取得"""
+    try:
+        query = "SELECT id, question, answer, created_at, updated_at FROM faq_data WHERE company_id = ? ORDER BY created_at"
+        results = fetch_dict(query, (company_id,))
+        return results
+        
+    except Exception as e:
+        print(f"[DATABASE] FAQデータ取得エラー: {e}")
+        return []
+
+def update_faq_in_db(faq_id, question, answer):
+    """FAQデータを更新"""
+    try:
+        query = """
+            UPDATE faq_data 
+            SET question = ?, answer = ?, updated_at = ?
+            WHERE id = ?
+        """
+        current_time = datetime.now().isoformat()
+        
+        execute_query(query, (question, answer, current_time, faq_id))
+        print(f"[DATABASE] FAQ更新完了: {faq_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[DATABASE] FAQ更新エラー: {e}")
+        return False
+
+def delete_faq_from_db(faq_id):
+    """FAQデータを削除"""
+    try:
+        query = "DELETE FROM faq_data WHERE id = ?"
+        execute_query(query, (faq_id,))
+        print(f"[DATABASE] FAQ削除完了: {faq_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[DATABASE] FAQ削除エラー: {e}")
+        return False
+
+def count_faq_data(company_id):
+    """会社のFAQ数を取得"""
+    try:
+        query = "SELECT COUNT(*) FROM faq_data WHERE company_id = ?"
+        result = fetch_one(query, (company_id,))
+        return result[0] if result else 0
+    except Exception as e:
+        print(f"[DATABASE] FAQ数取得エラー: {e}")
+        return 0
+
+def delete_all_faq_data(company_id):
+    """会社の全FAQデータを削除"""
+    try:
+        query = "DELETE FROM faq_data WHERE company_id = ?"
+        execute_query(query, (company_id,))
+        print(f"[DATABASE] 全FAQ削除完了: {company_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[DATABASE] 全FAQ削除エラー: {e}")
         return False
 
 # =============================================================================

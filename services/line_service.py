@@ -10,6 +10,7 @@ import streamlit as st
 from dotenv import load_dotenv
 from datetime import datetime
 from core.database import get_line_settings_from_db
+from services.company_service import get_company_name
 
 # LINE Bot SDK のインポートを試みる（インストールされていない場合のエラーを防止）
 try:
@@ -70,9 +71,13 @@ def send_line_message(question, answer=None, similarity_score=None, room_number=
         print("LINE APIの認証情報が設定されていません")
         return False
     
+    # 会社名を取得
+    company_name = get_company_name(company_id)
+    company_display = company_name if company_name else company_id
+    
     # 通知メッセージの作成
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    message_text = f"[対応確認依頼] {now}\n\n"
+    message_text = f"[{company_display}] 対応確認依頼 {now}\n\n"
     
     # 部屋番号の情報があれば追加
     if room_number:
