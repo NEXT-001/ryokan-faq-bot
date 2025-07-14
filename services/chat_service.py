@@ -10,6 +10,7 @@ import streamlit as st
 from config.settings import is_test_mode, get_data_path
 from services.embedding_service import get_embedding
 from services.line_service import send_line_message  # LINE送信機能をインポート
+from services.faq_migration import get_faq_data_from_db, init_faq_migration
 
 # 類似度のしきい値（これを下回る場合は不明確な回答となる）
 SIMILARITY_THRESHOLD = 0.6
@@ -66,45 +67,71 @@ def get_response(user_input, company_id=None, user_info=""):
         
         return default_response, len(user_input.split()), len(default_response.split())
     
-    # 本番モード
-    # 会社のFAQデータパスを取得
-    company_path = os.path.join(get_data_path(), "companies", company_id)
-    faq_path = os.path.join(company_path, "faq_with_embeddings.pkl")
-    
-    # FAQデータの存在確認
-    if not os.path.exists(faq_path):
-        error_msg = f"申し訳ありません。企業ID「{company_id}」のFAQデータが見つかりません。"
-        return error_msg, 0, 0
-    
+    # 本番モード - DBからFAQデータを取得
     try:
-        # FAQデータを読み込む
-        df = pd.read_pickle(faq_path)
+        # FAQマイグレーション用テーブルの初期化
+        init_faq_migration()
         
-        # データフレームの内容を確認
-        print(f"FAQ データ: {len(df)} 件")
+        # DBからFAQデータを取得
+        faq_data = get_faq_data_from_db(company_id)
+        
+        if not faq_data:
+            # DBにデータがない場合は、従来のPKLファイルから読み込みを試行
+            company_path = os.path.join(get_data_path(), "companies", company_id)
+            faq_path = os.path.join(company_path, "faq_with_embeddings.pkl")
+            
+            if os.path.exists(faq_path):
+                # PKLファイルが存在する場合は読み込み（後方互換性）
+                df = pd.read_pickle(faq_path)
+                print(f"PKL FAQ データ（後方互換）: {len(df)} 件")
+                
+                # データをDBに移行
+                from services.faq_migration import migrate_company_faq_data
+                if migrate_company_faq_data(company_id, show_progress=False):
+                    print(f"PKLデータをDBに移行しました: {company_id}")
+                    # 移行後にDBからデータを再取得
+                    faq_data = get_faq_data_from_db(company_id)
+                else:
+                    # 移行に失敗した場合はPKLデータをそのまま使用
+                    faq_data = df.to_dict('records')
+                    for i, row in enumerate(faq_data):
+                        row['id'] = i + 1
+            else:
+                error_msg = f"申し訳ありません。企業ID「{company_id}」のFAQデータが見つかりません。"
+                return error_msg, 0, 0
+        
+        print(f"FAQ データ: {len(faq_data)} 件")
         
         # ユーザー入力のエンベディングを取得
         user_embedding = get_embedding(user_input)
         
+        # エンベディングが存在するFAQのみを抽出
+        valid_faqs = [faq for faq in faq_data if faq['embedding'] is not None]
+        
+        if not valid_faqs:
+            error_msg = f"申し訳ありません。企業ID「{company_id}」のエンベディングデータが見つかりません。"
+            return error_msg, 0, 0
+        
         # コサイン類似度の計算
-        embeddings_list = df["embedding"].tolist()
+        embeddings_list = [faq['embedding'] for faq in valid_faqs]
         similarities = cosine_similarity([user_embedding], embeddings_list)
         
         # 類似度の上位5件を表示
         top_indices = np.argsort(similarities[0])[::-1][:5]
         print("\n上位5件の類似質問:")
         for idx in top_indices:
-            print(f"類似度: {similarities[0][idx]:.4f}, 質問: {df.iloc[idx]['question'][:50]}...")
+            if idx < len(valid_faqs):
+                print(f"類似度: {similarities[0][idx]:.4f}, 質問: {valid_faqs[idx]['question'][:50]}...")
         
         # 最も類似度の高い質問のインデックスを取得
         best_idx = np.argmax(similarities)
         similarity_score = similarities[0][best_idx]
         
-        print(f"\n最も類似度の高い質問: {df.iloc[best_idx]['question']}")
+        print(f"\n最も類似度の高い質問: {valid_faqs[best_idx]['question']}")
         print(f"類似度スコア: {similarity_score:.4f}")
         
         # 対応する回答を取得
-        answer = df.iloc[best_idx]["answer"]
+        answer = valid_faqs[best_idx]["answer"]
         
         # 類似度スコアが低すぎる場合
         if similarity_score < SIMILARITY_THRESHOLD:
@@ -133,12 +160,15 @@ def get_response(user_input, company_id=None, user_info=""):
         error_message = f"エラーが発生しました。スタッフにお問い合わせください。"
         
         # エラー発生時もLINE通知
-        send_line_message(
-            question=user_input,
-            answer=f"エラー: {str(e)}",
-            similarity_score=0.0,
-            room_number=user_info,
-            company_id=company_id
-        )
+        try:
+            send_line_message(
+                question=user_input,
+                answer=f"エラー: {str(e)}",
+                similarity_score=0.0,
+                room_number=user_info,
+                company_id=company_id
+            )
+        except Exception as line_error:
+            print(f"LINE通知エラー: {line_error}")
         
         return error_message, 0, 0

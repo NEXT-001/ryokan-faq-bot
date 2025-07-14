@@ -10,10 +10,11 @@ import time
 from services.embedding_service import create_embeddings
 from services.login_service import get_current_company_id
 from config.settings import get_data_path
+from core.database import execute_query, fetch_dict, fetch_dict_one
 
 def load_faq_data(company_id):
     """
-    指定された会社のFAQデータを読み込む
+    指定された会社のFAQデータをデータベースから読み込む
     
     Args:
         company_id (str): 会社ID
@@ -21,41 +22,29 @@ def load_faq_data(company_id):
     Returns:
         pd.DataFrame: FAQデータフレーム
     """
-    # 会社のデータディレクトリを取得
-    company_dir = os.path.join(get_data_path(), "companies", company_id)
-    if not os.path.exists(company_dir):
-        os.makedirs(company_dir)
-    
-    # CSVファイルのパス
-    csv_path = os.path.join(company_dir, "faq.csv")
-    
-    # CSVファイルが存在するか確認
-    if not os.path.exists(csv_path):
-        # サンプルデータを作成
-        sample_data = {
-            "question": [
-                "サンプル質問1",
-                "サンプル質問2",
-                "サンプル質問3"
-            ],
-            "answer": [
-                "サンプル回答1",
-                "サンプル回答2",
-                "サンプル回答3"
-            ]
-        }
-        df = pd.DataFrame(sample_data)
-        df.to_csv(csv_path, index=False)
-        st.success("サンプルFAQデータを作成しました。")
-    else:
-        # 既存のCSVファイルを読み込む
-        df = pd.read_csv(csv_path)
-    
-    return df
+    try:
+        # データベースからFAQデータを取得
+        query = "SELECT question, answer FROM faq_data WHERE company_id = ? ORDER BY created_at"
+        results = fetch_dict(query, (company_id,))
+        
+        if results:
+            # データベースから取得したデータをDataFrameに変換
+            df = pd.DataFrame(results)
+        else:
+            # データがない場合は空のDataFrameを作成
+            df = pd.DataFrame(columns=["question", "answer"])
+            st.info("FAQデータがデータベースに見つかりません。")
+        
+        return df
+        
+    except Exception as e:
+        st.error(f"FAQデータの読み込み中にエラーが発生しました: {e}")
+        # エラーの場合は空のDataFrameを返す
+        return pd.DataFrame(columns=["question", "answer"])
 
 def save_faq_data(df, company_id):
     """
-    FAQデータをCSVファイルに保存し、エンベディングを更新する
+    FAQデータをデータベースに保存し、エンベディングを更新する
     
     Args:
         df (pd.DataFrame): 保存するFAQデータフレーム
@@ -64,16 +53,33 @@ def save_faq_data(df, company_id):
     Returns:
         bool: 保存に成功したかどうか
     """
-    # 会社のデータディレクトリを取得
-    company_dir = os.path.join(get_data_path(), "companies", company_id)
-    if not os.path.exists(company_dir):
-        os.makedirs(company_dir)
-    
-    # CSVファイルのパス
-    csv_path = os.path.join(company_dir, "faq.csv")
-    
     try:
-        # CSVに保存
+        # 既存のFAQデータを削除
+        delete_query = "DELETE FROM faq_data WHERE company_id = ?"
+        execute_query(delete_query, (company_id,))
+        
+        # 新しいFAQデータを挿入
+        insert_query = """
+            INSERT INTO faq_data (company_id, question, answer, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+        """
+        
+        current_time = datetime.now().isoformat()
+        for _, row in df.iterrows():
+            execute_query(insert_query, (
+                company_id, 
+                row['question'], 
+                row['answer'], 
+                current_time, 
+                current_time
+            ))
+        
+        # CSVファイルも同期して保存（互換性のため）
+        company_dir = os.path.join(get_data_path(), "companies", company_id)
+        if not os.path.exists(company_dir):
+            os.makedirs(company_dir)
+        
+        csv_path = os.path.join(company_dir, "faq.csv")
         df.to_csv(csv_path, index=False)
         
         # エンベディングを更新
@@ -82,6 +88,7 @@ def save_faq_data(df, company_id):
         
         st.success("FAQデータとエンベディングを更新しました。")
         return True
+        
     except Exception as e:
         st.error(f"保存エラー: {str(e)}")
         return False
@@ -226,29 +233,42 @@ def import_faq_from_csv(uploaded_file, company_id):
 
 def export_faq_to_csv(company_id):
     """
-    FAQデータをCSVファイルとしてエクスポートする
+    FAQデータをデータベースから取得してCSVファイルとしてエクスポートする
     
     Args:
         company_id (str): 会社ID
         
     Returns:
-        str: エクスポートしたファイルのパス
+        tuple: (成功したかどうか, ファイルパスまたはエラーメッセージ)
     """
-    # 既存のデータを読み込む
-    df = load_faq_data(company_id)
-    
-    # 会社のデータディレクトリを取得
-    company_dir = os.path.join(get_data_path(), "companies", company_id)
-    
-    # ファイル名を生成（タイムスタンプ付き）
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    export_filename = f"faq_export_{timestamp}.csv"
-    export_path = os.path.join(company_dir, export_filename)
-    
-    # CSVとしてエクスポート
-    df.to_csv(export_path, index=False)
-    
-    return export_path
+    try:
+        # データベースからFAQデータを読み込む
+        df = load_faq_data(company_id)
+        
+        if df.empty:
+            return False, "エクスポートするFAQデータがありません"
+        
+        # 会社のデータディレクトリを取得
+        company_dir = os.path.join(get_data_path(), "companies", company_id)
+        if not os.path.exists(company_dir):
+            os.makedirs(company_dir)
+        
+        # ファイル名を生成（タイムスタンプ付き）
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        export_filename = f"faq_export_{timestamp}.csv"
+        export_path = os.path.join(company_dir, export_filename)
+        
+        # CSVとしてエクスポート
+        df.to_csv(export_path, index=False, encoding='utf-8-sig')
+        
+        # ファイルが正常に作成されたか確認
+        if os.path.exists(export_path) and os.path.getsize(export_path) > 0:
+            return True, export_path
+        else:
+            return False, "ファイルの作成に失敗しました"
+            
+    except Exception as e:
+        return False, f"エクスポート中にエラーが発生しました: {str(e)}"
 
 def faq_management_page():
     """
@@ -350,17 +370,24 @@ def faq_management_page():
         # エクスポート
         st.write("#### FAQをCSVにエクスポート")
         if st.button("エクスポート実行"):
-            export_path = export_faq_to_csv(company_id)
-            st.success(f"FAQデータをエクスポートしました")
-            
-            # ダウンロードリンクを提供
-            with open(export_path, "rb") as file:
-                st.download_button(
-                    label="エクスポートしたCSVをダウンロード",
-                    data=file,
-                    file_name=os.path.basename(export_path),
-                    mime="text/csv"
-                )
+            success, result = export_faq_to_csv(company_id)
+            if success:
+                export_path = result
+                st.success(f"FAQデータをエクスポートしました")
+                
+                # ダウンロードリンクを提供
+                try:
+                    with open(export_path, "rb") as file:
+                        st.download_button(
+                            label="エクスポートしたCSVをダウンロード",
+                            data=file,
+                            file_name=os.path.basename(export_path),
+                            mime="text/csv"
+                        )
+                except Exception as e:
+                    st.error(f"ダウンロード準備中にエラーが発生しました: {str(e)}")
+            else:
+                st.error(f"エクスポートに失敗しました: {result}")
         
         st.write("---")
         
@@ -376,43 +403,3 @@ def faq_management_page():
             except Exception as e:
                 st.error(f"エンベディングの再生成に失敗しました: {str(e)}")
                 
-def faq_preview_page(company_id=None):
-    """
-    FAQ検索プレビュー
-    
-    Args:
-        company_id (str, optional): 会社ID
-    """
-    st.header("FAQ検索テスト")
-    
-    if not company_id:
-        st.error("会社情報が見つかりません。")
-        return
-    
-    # 会社のデータディレクトリを取得
-    company_dir = os.path.join(get_data_path(), "companies", company_id)
-    faq_path = os.path.join(company_dir, "faq_with_embeddings.pkl")
-    
-    if not os.path.exists(faq_path):
-        st.warning("エンベディングファイルが見つかりません。先にエンベディングを生成してください。")
-        
-        if st.button("エンベディングを生成"):
-            with st.spinner("エンベディングを生成中..."):
-                create_embeddings(company_id)
-            st.success("エンベディングを生成しました。")
-            st.rerun()
-        return
-    
-    # 検索テスト
-    st.write("FAQ検索機能をテストします。実際のユーザー体験を確認できます。")
-    
-    test_query = st.text_input("テスト質問を入力してください")
-    
-    if test_query:
-        from services.chat_service import get_response
-        
-        with st.spinner("回答を検索中..."):
-            answer, _, _ = get_response(test_query, company_id)
-            
-            st.write("#### 検索結果")
-            st.info(answer)

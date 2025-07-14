@@ -5,7 +5,7 @@ pages/admin_page.py
 import streamlit as st
 from services.login_service import is_logged_in, logout_user, is_super_admin
 from services.company_service import get_company_name, get_company_list
-from admin_faq_management import faq_management_page, faq_preview_page
+from admin_faq_management import faq_management_page
 from services.line_settings import line_settings_page
 from services.login_service import admin_management_page
 from services.payment_service import payment_management_page
@@ -95,13 +95,6 @@ def login_page(company_id):
     """ログインページ"""
     st.title("💬 FAQ AIチャットボット - ログイン")
     
-    # 会社名を表示
-    try:
-        company_name = get_company_name(company_id)
-        if company_name:
-            st.header(f"企業: {company_name}")
-    except:
-        pass
     
     # ログインフォーム（メールアドレス認証用に修正）
     with st.form("admin_login_form"):
@@ -163,7 +156,8 @@ def admin_dashboard(company_id):
         if is_super:
             company_name = "スーパー管理者"
         else:
-            company_name = get_company_name(company_id) or "不明な会社"
+            # usersテーブルのcompany_nameを優先使用
+            company_name = st.session_state.get('company_name', "不明な会社")
         
         # タイトル表示
         st.title(f"💬 {company_name} - 管理画面")
@@ -183,7 +177,7 @@ def admin_dashboard(company_id):
                 # 企業管理者メニュー
                 admin_page_option = st.radio(
                     "管理メニュー",
-                    ["FAQ管理", "FAQ履歴", "LINE通知設定", "管理者設定", "FAQプレビュー", "決済管理"]
+                    ["FAQ管理", "FAQ履歴", "LINE通知設定", "管理者設定", "決済管理"]
                 )
             
             st.markdown("---")
@@ -213,15 +207,7 @@ def admin_dashboard(company_id):
             if admin_page_option == "企業管理":
                 super_admin_company_management()
             elif admin_page_option == "FAQデモ":
-                # 企業選択
-                companies = get_company_list()
-                company_options = {company["name"]: company["id"] for company in companies}
-                
-                selected_company_name = st.selectbox("企業を選択", list(company_options.keys()))
-                selected_company_id = company_options[selected_company_name]
-                
-                # プレビュー表示
-                faq_preview_page(selected_company_id)
+                st.info("FAQプレビュー機能は削除されました。")
         else:
             # 企業管理者ページ
             if admin_page_option == "FAQ管理":
@@ -232,8 +218,6 @@ def admin_dashboard(company_id):
                 line_settings_page(company_id)
             elif admin_page_option == "管理者設定":
                 admin_management_page()
-            elif admin_page_option == "FAQプレビュー":
-                faq_preview_page(company_id)
             elif admin_page_option == "決済管理":
                 payment_management_page(company_id)
                 

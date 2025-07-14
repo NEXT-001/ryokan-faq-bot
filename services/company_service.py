@@ -79,7 +79,16 @@ def create_default_settings(company_id):
         # 設定を再読み込みして返す
         return load_company_settings(company_id)
     else:
-        company_name = f"企業_{company_id}"
+        # company_id から適切な企業名を生成
+        # company_id が "company_xxx_yyy" 形式の場合、"企業_{xxx}" として表示
+        if company_id.startswith("company_") and "_" in company_id:
+            parts = company_id.split("_")
+            if len(parts) >= 2:
+                company_name = f"企業_{parts[1]}"
+            else:
+                company_name = f"企業_{company_id}"
+        else:
+            company_name = f"企業_{company_id}"
         
         # 会社をSQLiteに保存
         save_company_to_db(company_id, company_name, created_at, 0)

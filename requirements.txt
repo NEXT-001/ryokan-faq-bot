@@ -1,11 +1,43 @@
-streamlit==1.45.1
-pandas>=2.2.0
-numpy==1.26.0
-scikit-learn==1.3.2
-anthropic>=0.18.1
-python-dotenv==1.0.0
-line-bot-sdk>=3.5.0,<4.0.0
-requests==2.31.0
-matplotlib==3.8.2
-seaborn==0.13.0
-voyageai>=0.1.0
+# Ryokan FAQ Bot - 依存関係
+# SQLite移行対応版
+
+# ===== コアWebアプリケーション =====
+streamlit>=1.45.0,<2.0.0
+
+# ===== データ処理 =====
+pandas>=2.2.0,<3.0.0
+numpy>=2.0.0,<3.0.0
+
+# ===== 機械学習 =====
+scikit-learn>=1.5.0,<2.0.0
+
+# ===== AI/LLM =====
+anthropic>=0.50.0,<1.0.0
+voyageai>=0.3.0,<1.0.0
+
+# ===== 環境設定 =====
+python-dotenv>=1.0.0,<2.0.0
+
+# ===== HTTP通信 =====
+requests>=2.30.0,<3.0.0
+
+# ===== LINE Bot =====
+line-bot-sdk>=3.5.0,<4.0.0  # オプション: LINE Bot機能使用時のみ必要
+
+# ===== データ可視化（オプション） =====
+matplotlib>=3.7.0,<4.0.0
+seaborn>=0.12.0,<1.0.0
+
+# ===== 開発・テスト用（オプション） =====
+# pytest>=7.0.0,<8.0.0
+# pytest-cov>=4.0.0,<5.0.0
+
+# ===== メール送信（使用時のみ） =====
+# smtplib は標準ライブラリのため不要
+
+# ===== データベース =====
+# sqlite3 は標準ライブラリのため不要
+
+# ===== その他標準ライブラリ（インストール不要） =====
+# os, sys, json, csv, time, datetime, hashlib, threading
+# pickle, shutil, contextlib

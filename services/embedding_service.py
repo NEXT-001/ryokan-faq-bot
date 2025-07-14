@@ -10,6 +10,10 @@ import voyageai
 import time
 import streamlit as st
 from config.settings import is_test_mode, get_data_path
+from services.faq_migration import (
+    get_faq_data_from_db, save_faq_to_db, update_faq_in_db,
+    init_faq_migration, serialize_embedding, deserialize_embedding
+)
 
 # エンベディングの次元数 (テストモードでは1024次元を想定)
 EMBEDDING_DIM = 1024
@@ -154,36 +158,50 @@ def get_embedding(text, client=None):
 
 def create_embeddings(company_id, show_progress=True):
     """
-    指定された会社のFAQデータにエンベディングを追加して保存する
+    指定された会社のFAQデータにエンベディングを追加してDBに保存する
     
     Args:
         company_id (str): 会社ID
         show_progress (bool): Streamlitで進行状況を表示するかどうか
     """
-    # 会社のデータディレクトリを取得
-    company_dir = os.path.join(get_data_path(), "companies", company_id)
-    if not os.path.exists(company_dir):
-        os.makedirs(company_dir)
+    # FAQマイグレーション用テーブルの初期化
+    init_faq_migration()
     
-    # CSVファイルの確認
-    csv_path = os.path.join(company_dir, "faq.csv")
-    if not os.path.exists(csv_path):
-        error_msg = f"CSVファイルが見つかりません: {csv_path}"
+    # DBからFAQデータを取得
+    faq_data = get_faq_data_from_db(company_id)
+    
+    if not faq_data:
+        # DBにデータがない場合は、CSVから移行を試行
+        company_dir = os.path.join(get_data_path(), "companies", company_id)
+        csv_path = os.path.join(company_dir, "faq.csv")
+        
+        if not os.path.exists(csv_path):
+            error_msg = f"CSVファイルとDBデータの両方が見つかりません: {csv_path}"
+            print(error_msg)
+            if show_progress:
+                st.error(error_msg)
+            return False
+        
+        # CSVからDBに移行
+        from services.faq_migration import migrate_company_faq_data
+        if not migrate_company_faq_data(company_id, show_progress):
+            error_msg = f"CSVからDBへの移行に失敗しました: {company_id}"
+            print(error_msg)
+            if show_progress:
+                st.error(error_msg)
+            return False
+        
+        # 移行後にデータを再取得
+        faq_data = get_faq_data_from_db(company_id)
+    
+    if not faq_data:
+        error_msg = f"FAQデータが見つかりません: {company_id}"
         print(error_msg)
         if show_progress:
             st.error(error_msg)
         return False
     
-    # CSVからデータを読み込む
-    try:
-        df = pd.read_csv(csv_path)
-        print(f"{len(df)}個のFAQエントリを読み込みました。")
-    except Exception as e:
-        error_msg = f"CSVファイルの読み込みエラー: {e}"
-        print(error_msg)
-        if show_progress:
-            st.error(error_msg)
-        return False
+    print(f"{len(faq_data)}個のFAQエントリを読み込みました。")
     
     # 一時的にテストモードをチェック
     original_test_mode = is_test_mode()
@@ -235,8 +253,16 @@ def create_embeddings(company_id, show_progress=True):
     
     # エンベディングの生成
     embeddings = []
-    all_questions = df["question"].tolist()
+    all_questions = [item['question'] for item in faq_data]
     total_count = len(all_questions)
+    
+    # 既にエンベディングが存在するかチェック
+    existing_embeddings = [item['embedding'] for item in faq_data if item['embedding'] is not None]
+    if len(existing_embeddings) == total_count:
+        print(f"全てのFAQに既にエンベディングが存在します: {total_count} 件")
+        if show_progress:
+            st.success(f"✅ 全てのFAQに既にエンベディングが存在します: {total_count} 件")
+        return True
     
     # 進行状況表示の準備（完全にシンプルな形式）
     if show_progress:
@@ -245,14 +271,9 @@ def create_embeddings(company_id, show_progress=True):
         status_text = st.empty()
         current_question_text = st.empty()
         
-        # 詳細ログ用（シンプルな表示）
-        show_details = st.checkbox("詳細な進行状況を表示", value=False)
-        if show_details:
-            detail_placeholder = st.empty()
-            detail_logs = []
-        else:
-            detail_placeholder = None
-            detail_logs = []
+        # 詳細ログ用（削除）
+        detail_placeholder = None
+        detail_logs = []
     
     # 各質問のエンベディングを生成
     for i, question in enumerate(all_questions):
@@ -267,14 +288,6 @@ def create_embeddings(company_id, show_progress=True):
             status_text.text(progress_text)
             current_question_text.info(f"処理中: {question[:50]}..." if len(question) > 50 else f"処理中: {question}")
             
-            # 詳細ログの更新（チェックボックスがONの場合のみ）
-            if show_details and detail_placeholder is not None:
-                detail_logs.append(f"[{i+1}/{total_count}] {question[:40]}..." if len(question) > 40 else f"[{i+1}/{total_count}] {question}")
-                # 最新の10件のログのみ表示
-                if len(detail_logs) > 10:
-                    detail_logs = detail_logs[-10:]
-                
-                detail_placeholder.text("\n".join(detail_logs))
         
         try:
             # エンベディングを取得
@@ -304,31 +317,30 @@ def create_embeddings(company_id, show_progress=True):
     if not original_test_mode:
         os.environ["TEST_MODE"] = "false"
     
-    # エンベディングをデータフレームに追加
-    df["embedding"] = embeddings
-    
-    # PKLファイルとして保存
-    pkl_path = os.path.join(company_dir, "faq_with_embeddings.pkl")
-    
+    # DBにエンベディングを保存
     if show_progress:
-        # st.status の代わりにシンプルなメッセージ表示を使用
         save_status = st.empty()
-        save_status.info("💾 エンベディングデータを保存しています...")
-        try:
-            df.to_pickle(pkl_path)
-            save_status.success(f"✅ 保存完了: {pkl_path}")
-            time.sleep(0.5)  # メッセージを表示する時間を確保
-            save_status.empty()  # メッセージをクリア
-        except Exception as e:
-            error_msg = f"❌ 保存エラー: {e}"
-            save_status.error(error_msg)
-            return False
-    else:
-        try:
-            df.to_pickle(pkl_path)
-            print(f"FAQデータとエンベディングを保存しました: {pkl_path}")
-        except Exception as e:
-            print(f"保存エラー: {e}")
-            return False
+        save_status.info("💾 エンベディングデータをDBに保存しています...")
     
-    return True
+    try:
+        success_count = 0
+        for i, faq_item in enumerate(faq_data):
+            if i < len(embeddings):
+                # 既存のFAQにエンベディングを更新
+                if update_faq_in_db(faq_item['id'], embedding=embeddings[i]):
+                    success_count += 1
+        
+        if show_progress:
+            save_status.success(f"✅ DB保存完了: {success_count}/{len(faq_data)} 件")
+            time.sleep(0.5)
+            save_status.empty()
+        
+        print(f"FAQエンベディングをDBに保存しました: {success_count}/{len(faq_data)} 件")
+        return True
+        
+    except Exception as e:
+        error_msg = f"❌ DB保存エラー: {e}"
+        print(error_msg)
+        if show_progress:
+            save_status.error(error_msg)
+        return False
