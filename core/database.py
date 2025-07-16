@@ -218,30 +218,30 @@ def get_company_from_db(company_id):
         return None
 
 def save_company_admin_to_db(company_id, username, password, email, created_at):
-    """会社管理者をデータベースに保存"""
+    """会社管理者をusersテーブルに保存"""
     try:
         if created_at is None:
             created_at = datetime.now().isoformat()
         
         # 既存の管理者が存在するかチェック
-        existing_query = "SELECT id FROM company_admins WHERE company_id = ? AND username = ?"
+        existing_query = "SELECT id FROM users WHERE company_id = ? AND name = ?"
         existing_admin = fetch_one(existing_query, (company_id, username))
         
         if existing_admin:
             # 既存の管理者情報を更新
             query = """
-                UPDATE company_admins 
+                UPDATE users 
                 SET password = ?, email = ?
-                WHERE company_id = ? AND username = ?
+                WHERE company_id = ? AND name = ?
             """
             execute_query(query, (password, email, company_id, username))
             print(f"[DATABASE] 管理者更新完了: {company_id}/{username}")
         else:
             # 新しい管理者を作成
             query = """
-                INSERT INTO company_admins 
-                (company_id, username, password, email, created_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO users 
+                (company_id, name, password, email, created_at, is_verified)
+                VALUES (?, ?, ?, ?, ?, 1)
             """
             execute_query(query, (company_id, username, password, email, created_at))
             print(f"[DATABASE] 管理者作成完了: {company_id}/{username}")
@@ -253,14 +253,14 @@ def save_company_admin_to_db(company_id, username, password, email, created_at):
         return False
 
 def get_company_admins_from_db(company_id):
-    """会社の管理者一覧をデータベースから取得"""
+    """会社の管理者一覧をusersテーブルから取得"""
     try:
-        query = "SELECT * FROM company_admins WHERE company_id = ?"
+        query = "SELECT name, email, password, created_at FROM users WHERE company_id = ?"
         results = fetch_dict(query, (company_id,))
         
         admins = {}
         for row in results:
-            admins[row["username"]] = {
+            admins[row["name"]] = {
                 "password": row["password"],
                 "email": row["email"],
                 "created_at": row["created_at"]
@@ -273,9 +273,9 @@ def get_company_admins_from_db(company_id):
         return {}
 
 def delete_company_admins_from_db(company_id):
-    """会社の全管理者をデータベースから削除"""
+    """会社の全管理者をusersテーブルから削除"""
     try:
-        query = "DELETE FROM company_admins WHERE company_id = ?"
+        query = "DELETE FROM users WHERE company_id = ?"
         execute_query(query, (company_id,))
         print(f"[DATABASE] 管理者削除完了: {company_id}")
         return True
@@ -362,10 +362,14 @@ def authenticate_user_by_email(email, password):
         result = fetch_dict_one(query, (email, hashed_password))
         
         if result:
+            # companiesテーブルから会社名を取得
+            company_info = get_company_from_db(result["company_id"])
+            company_name = company_info["company_name"] if company_info else "不明な企業"
+            
             return True, {
                 "id": result["id"],
                 "company_id": result["company_id"],
-                "company_name": result["company_name"].strip(),
+                "company_name": company_name,
                 "name": result["name"],
                 "email": result["email"]
             }
@@ -909,7 +913,7 @@ def update_company_admin_password_in_db(company_id, new_password):
 def verify_company_admin_exists(company_id):
     """会社管理者が存在するかチェック"""
     try:
-        query = "SELECT username FROM users WHERE company_id = ?"
+        query = "SELECT name FROM users WHERE company_id = ?"
         result = fetch_all(query, (company_id,))
         return len(result) > 0
         
@@ -918,17 +922,13 @@ def verify_company_admin_exists(company_id):
         return False
 
 def update_company_name_in_db(company_id, new_company_name):
-    """会社名をデータベースで更新"""
+    """会社名をcompaniesテーブルのみで更新"""
     try:
-        # companiesテーブルを更新
-        query1 = "UPDATE companies SET name = ? WHERE id = ?"
-        rows_affected1 = execute_query(query1, (new_company_name, company_id))
+        # companiesテーブルのみを更新
+        query = "UPDATE companies SET name = ? WHERE id = ?"
+        rows_affected = execute_query(query, (new_company_name, company_id))
         
-        # usersテーブルを更新
-        query2 = "UPDATE users SET company_name = ? WHERE company_id = ?"
-        rows_affected2 = execute_query(query2, (new_company_name, company_id))
-        
-        if rows_affected1 > 0 or rows_affected2 > 0:
+        if rows_affected > 0:
             print(f"[DATABASE] 会社名更新完了: {company_id} -> {new_company_name}")
             return True
         else:
