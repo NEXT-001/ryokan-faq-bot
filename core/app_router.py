@@ -3,12 +3,12 @@
 core/app_router.py
 """
 import streamlit as st
-from config.app_config import get_url_params, configure_page, AppConfig
-from config.settings import load_api_key
+from config.unified_config import UnifiedConfig
 from pages.user_page import user_page
 from pages.admin_page import admin_page
 from pages.registration_page import registration_page
 from pages.verify_page import verify_page
+from utils.db_utils import cleanup_expired_tokens
 
 
 def hide_sidebar_navigation():
@@ -43,7 +43,7 @@ def hide_sidebar_navigation():
 
 def show_debug_info():
     """デバッグ情報を表示する（テストモード時のみ）"""
-    if AppConfig.is_test_mode():
+    if UnifiedConfig.is_test_mode():
         with st.expander("🔧 デバッグ情報"):
             # セッション状態
             st.write("セッション状態:")
@@ -53,8 +53,8 @@ def show_debug_info():
             
             # 環境変数の状態
             st.write("環境変数:")
-            st.write(f"- TEST_MODE: {AppConfig.TEST_MODE}")
-            st.write(f"- HAS_API_KEYS: {AppConfig.has_api_keys()}")
+            st.write(f"- TEST_MODE: {UnifiedConfig.TEST_MODE}")
+            st.write(f"- HAS_API_KEYS: {UnifiedConfig.has_api_keys()}")
             
             # モード切替リンク
             test_company = "demo-company"
@@ -73,11 +73,14 @@ def show_debug_info():
 
 def route_application():
     """アプリケーションのルーティングメイン処理"""
+    # 期限切れトークンの定期クリーンアップ（アプリ起動時に実行）
+    cleanup_expired_tokens()
+    
     # URLパラメータを取得
-    mode, company_id, url_logged_in = get_url_params()
+    mode, company_id, url_logged_in = UnifiedConfig.get_url_params()
     
     # ページ設定を動的に調整
-    configure_page(mode)
+    UnifiedConfig.configure_page(mode)
     
     # ページナビゲーションを非表示
     hide_sidebar_navigation()
@@ -95,23 +98,23 @@ def route_application():
         st.session_state["is_logged_in"] = True
     
     # データディレクトリを確保
-    AppConfig.ensure_data_directory()
+    UnifiedConfig.ensure_data_directory()
     
     # APIキーのロード（エラーハンドリング付き）
     try:
-        load_api_key()
+        UnifiedConfig.load_anthropic_client()
     except ValueError as e:
         st.error(f"エラー: {e}")
         st.info("APIキーが設定されていないため、テストモードで実行します")
         # テストモードを有効化
         import os
         os.environ["TEST_MODE"] = "true"
-        AppConfig.TEST_MODE = True
+        UnifiedConfig.TEST_MODE = True
     except:
         # APIキーが設定されていない場合はテストモードを有効化
         import os
         os.environ["TEST_MODE"] = "true"
-        AppConfig.TEST_MODE = True
+        UnifiedConfig.TEST_MODE = True
     
     # デバッグ情報表示（テストモード時のみ）
     show_debug_info()

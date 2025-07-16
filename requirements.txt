@@ -1,5 +1,5 @@
-# Ryokan FAQ Bot - 依存関係
-# SQLite移行対応版
+# Ryokan FAQ Bot - 本番環境用依存関係
+# Production dependencies for deployment
 
 # ===== コアWebアプリケーション =====
 streamlit>=1.45.0,<2.0.0
@@ -24,23 +24,11 @@ requests>=2.30.0,<3.0.0
 # ===== 決済処理 =====
 stripe>=5.0.0,<6.0.0
 
-# ===== LINE Bot =====
-line-bot-sdk>=3.5.0,<4.0.0  # オプション: LINE Bot機能使用時のみ必要
+# ===== LINE Bot（オプション機能） =====
+line-bot-sdk>=3.5.0,<4.0.0
 
-# ===== データ可視化（オプション） =====
-matplotlib>=3.7.0,<4.0.0
-seaborn>=0.12.0,<1.0.0
-
-# ===== 開発・テスト用（オプション） =====
-# pytest>=7.0.0,<8.0.0
-# pytest-cov>=4.0.0,<5.0.0
-
-# ===== メール送信（使用時のみ） =====
-# smtplib は標準ライブラリのため不要
-
-# ===== データベース =====
-# sqlite3 は標準ライブラリのため不要
-
-# ===== その他標準ライブラリ（インストール不要） =====
-# os, sys, json, csv, time, datetime, hashlib, threading
-# pickle, shutil, contextlib
+# 注意: 以下は標準ライブラリのためインストール不要
+# - sqlite3 (データベース)
+# - smtplib (メール送信)
+# - os, sys, json, csv, time, datetime, hashlib, threading
+# - pickle, shutil, contextlib

@@ -1,10 +1,18 @@
 """
 アプリケーション設定管理
 config/app_config.py
+
+⚠️ 非推奨: このファイルは config/unified_config.py に統合されました
+新しいコードでは config.unified_config.UnifiedConfig を使用してください
+
+このファイルは後方互換性のためにのみ残されています
 """
 import os
 import streamlit as st
 from dotenv import load_dotenv
+
+# 新しい統一設定をインポート
+from config.unified_config import UnifiedConfig
 
 # 環境変数を読み込み
 load_dotenv()

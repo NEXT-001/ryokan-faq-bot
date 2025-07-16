@@ -9,7 +9,7 @@ from datetime import datetime
 import time
 from services.embedding_service import create_embeddings
 from services.login_service import get_current_company_id
-from config.settings import get_data_path
+from config.unified_config import UnifiedConfig
 from core.database import execute_query, fetch_dict, fetch_dict_one
 
 def load_faq_data(company_id):
@@ -74,14 +74,6 @@ def save_faq_data(df, company_id):
                 current_time
             ))
         
-        # CSVファイルも同期して保存（互換性のため）
-        company_dir = os.path.join(get_data_path(), "companies", company_id)
-        if not os.path.exists(company_dir):
-            os.makedirs(company_dir)
-        
-        csv_path = os.path.join(company_dir, "faq.csv")
-        df.to_csv(csv_path, index=False)
-        
         # エンベディングを更新
         with st.spinner("エンベディングを生成中..."):
             create_embeddings(company_id)
@@ -108,21 +100,29 @@ def add_faq(question, answer, company_id):
     if not question or not answer:
         return False, "質問と回答を入力してください。"
     
-    # 既存のデータを読み込む
-    df = load_faq_data(company_id)
-    
-    # 重複チェック
-    if question in df["question"].values:
-        return False, "同じ質問が既に登録されています。"
-    
-    # 新しい行を追加
-    new_row = pd.DataFrame({"question": [question], "answer": [answer]})
-    df = pd.concat([df, new_row], ignore_index=True)
-    
-    # 保存
-    if save_faq_data(df, company_id):
+    try:
+        # 重複チェック
+        check_query = "SELECT COUNT(*) as count FROM faq_data WHERE company_id = ? AND question = ?"
+        result = fetch_dict_one(check_query, (company_id, question))
+        if result and result['count'] > 0:
+            return False, "同じ質問が既に登録されています。"
+        
+        # 新しいFAQを追加
+        insert_query = """
+            INSERT INTO faq_data (company_id, question, answer, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+        """
+        current_time = datetime.now().isoformat()
+        execute_query(insert_query, (company_id, question, answer, current_time, current_time))
+        
+        # エンベディングを更新
+        with st.spinner("エンベディングを生成中..."):
+            create_embeddings(company_id)
+        
         return True, "FAQを追加しました。"
-    else:
+        
+    except Exception as e:
+        st.error(f"FAQ追加エラー: {str(e)}")
         return False, "FAQの追加に失敗しました。"
 
 def update_faq(index, question, answer, company_id):
@@ -130,7 +130,7 @@ def update_faq(index, question, answer, company_id):
     指定されたインデックスのFAQを更新する
     
     Args:
-        index (int): 更新するFAQのインデックス
+        index (int): 更新するFAQのインデックス（表示順序）
         question (str): 新しい質問
         answer (str): 新しい回答
         company_id (str): 会社ID
@@ -141,21 +141,33 @@ def update_faq(index, question, answer, company_id):
     if not question or not answer:
         return False, "質問と回答を入力してください。"
     
-    # 既存のデータを読み込む
-    df = load_faq_data(company_id)
-    
-    # インデックスの検証
-    if index < 0 or index >= len(df):
-        return False, "無効なインデックスです。"
-    
-    # 更新
-    df.at[index, "question"] = question
-    df.at[index, "answer"] = answer
-    
-    # 保存
-    if save_faq_data(df, company_id):
+    try:
+        # 指定されたインデックスのFAQ IDを取得
+        query = "SELECT id FROM faq_data WHERE company_id = ? ORDER BY created_at LIMIT 1 OFFSET ?"
+        result = fetch_dict_one(query, (company_id, index))
+        
+        if not result:
+            return False, "無効なインデックスです。"
+        
+        faq_id = result['id']
+        
+        # FAQを更新
+        update_query = """
+            UPDATE faq_data 
+            SET question = ?, answer = ?, updated_at = ?
+            WHERE id = ?
+        """
+        current_time = datetime.now().isoformat()
+        execute_query(update_query, (question, answer, current_time, faq_id))
+        
+        # エンベディングを更新
+        with st.spinner("エンベディングを生成中..."):
+            create_embeddings(company_id)
+        
         return True, "FAQを更新しました。"
-    else:
+        
+    except Exception as e:
+        st.error(f"FAQ更新エラー: {str(e)}")
         return False, "FAQの更新に失敗しました。"
 
 def delete_faq(index, company_id):
@@ -163,27 +175,34 @@ def delete_faq(index, company_id):
     指定されたインデックスのFAQを削除する
     
     Args:
-        index (int): 削除するFAQのインデックス
+        index (int): 削除するFAQのインデックス（表示順序）
         company_id (str): 会社ID
         
     Returns:
         tuple: (成功したかどうか, メッセージ)
     """
-    # 既存のデータを読み込む
-    df = load_faq_data(company_id)
-    
-    # インデックスの検証
-    if index < 0 or index >= len(df):
-        return False, "無効なインデックスです。"
-    
-    # 削除
-    df = df.drop(index)
-    df = df.reset_index(drop=True)  # インデックスを振り直す
-    
-    # 保存
-    if save_faq_data(df, company_id):
+    try:
+        # 指定されたインデックスのFAQ IDを取得
+        query = "SELECT id FROM faq_data WHERE company_id = ? ORDER BY created_at LIMIT 1 OFFSET ?"
+        result = fetch_dict_one(query, (company_id, index))
+        
+        if not result:
+            return False, "無効なインデックスです。"
+        
+        faq_id = result['id']
+        
+        # FAQを削除（外部キー制約により関連するエンベディングも自動削除される）
+        delete_query = "DELETE FROM faq_data WHERE id = ?"
+        execute_query(delete_query, (faq_id,))
+        
+        # エンベディングを更新
+        with st.spinner("エンベディングを生成中..."):
+            create_embeddings(company_id)
+        
         return True, "FAQを削除しました。"
-    else:
+        
+    except Exception as e:
+        st.error(f"FAQ削除エラー: {str(e)}")
         return False, "FAQの削除に失敗しました。"
 
 def import_faq_from_csv(uploaded_file, company_id):
@@ -205,28 +224,49 @@ def import_faq_from_csv(uploaded_file, company_id):
         if "question" not in imported_df.columns or "answer" not in imported_df.columns:
             return False, "CSVファイルには 'question' と 'answer' の列が必要です。"
         
-        # 既存のデータを読み込む
-        current_df = load_faq_data(company_id)
+        # 必要な列だけ取得
+        imported_df = imported_df[["question", "answer"]].dropna()
         
-        # 重複の確認と処理
-        imported_df = imported_df[["question", "answer"]]  # 必要な列だけ取得
+        # 既存の質問を取得（重複チェック用）
+        existing_questions_query = "SELECT question FROM faq_data WHERE company_id = ?"
+        existing_questions = fetch_dict(existing_questions_query, (company_id,))
+        existing_question_set = {row['question'] for row in existing_questions}
         
-        # 重複する質問を検出
-        duplicates = imported_df["question"].isin(current_df["question"])
-        new_entries = imported_df[~duplicates]
-        duplicate_count = duplicates.sum()
+        # 新しいエントリのみを抽出
+        new_entries = []
+        duplicate_count = 0
         
-        # 新しいエントリを追加
-        combined_df = pd.concat([current_df, new_entries], ignore_index=True)
+        for _, row in imported_df.iterrows():
+            question = row['question']
+            answer = row['answer']
+            
+            if question in existing_question_set:
+                duplicate_count += 1
+            else:
+                new_entries.append((question, answer))
+                existing_question_set.add(question)  # 同一ファイル内の重複も防ぐ
         
-        # 保存
-        if save_faq_data(combined_df, company_id):
-            message = f"{len(new_entries)}件のFAQを追加しました。"
-            if duplicate_count > 0:
-                message += f" {duplicate_count}件の重複エントリはスキップされました。"
-            return True, message
-        else:
-            return False, "FAQのインポートに失敗しました。"
+        # 新しいエントリをデータベースに追加
+        if new_entries:
+            insert_query = """
+                INSERT INTO faq_data (company_id, question, answer, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+            """
+            current_time = datetime.now().isoformat()
+            
+            for question, answer in new_entries:
+                execute_query(insert_query, (company_id, question, answer, current_time, current_time))
+            
+            # エンベディングを更新
+            with st.spinner("エンベディングを生成中..."):
+                create_embeddings(company_id)
+        
+        # 結果メッセージを作成
+        message = f"{len(new_entries)}件のFAQを追加しました。"
+        if duplicate_count > 0:
+            message += f" {duplicate_count}件の重複エントリはスキップされました。"
+        
+        return True, message
         
     except Exception as e:
         return False, f"インポート中にエラーが発生しました: {str(e)}"
@@ -249,9 +289,7 @@ def export_faq_to_csv(company_id):
             return False, "エクスポートするFAQデータがありません"
         
         # 会社のデータディレクトリを取得
-        company_dir = os.path.join(get_data_path(), "companies", company_id)
-        if not os.path.exists(company_dir):
-            os.makedirs(company_dir)
+        company_dir = UnifiedConfig.get_data_path(company_id)
         
         # ファイル名を生成（タイムスタンプ付き）
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -402,4 +440,3 @@ def faq_management_page():
                 st.success("エンベディングを再生成しました。")
             except Exception as e:
                 st.error(f"エンベディングの再生成に失敗しました: {str(e)}")
-                

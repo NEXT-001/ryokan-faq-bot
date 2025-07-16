@@ -5,7 +5,7 @@ pages/admin_page.py
 import streamlit as st
 from services.login_service import is_logged_in, logout_user, is_super_admin
 from services.company_service import get_company_name, get_company_list
-from admin_faq_management import faq_management_page
+from pages.admin_faq_management import faq_management_page
 from services.line_settings import line_settings_page
 from services.login_service import admin_management_page
 from services.payment_service import payment_management_page

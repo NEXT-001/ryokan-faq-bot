@@ -1,17 +1,17 @@
 """
 会社関連のユーティリティ関数
 utils/company_utils.py
+
+会社ID生成とフォルダ構造作成に特化したユーティリティ
 """
 import os
 import re
 import uuid
 import sqlite3
-import json
 import pandas as pd
 import numpy as np
 import pickle
 from datetime import datetime
-from utils.auth_utils import hash_password
 
 
 def generate_company_id(company_name):

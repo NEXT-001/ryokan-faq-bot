@@ -1,175 +1,50 @@
-# login_service.py
+"""
+ログインサービス（統合認証サービスへのプロキシ）
+services/login_service.py
+
+注意: このファイルは後方互換性のために残されています。
+新しいコードでは services/auth_service.py を直接使用してください。
+"""
 import streamlit as st
 import pandas as pd
-import sqlite3
 from datetime import datetime
-from services.company_service import (
-    load_companies,
-    save_companies,
-    verify_company_admin,
-    add_admin
-)
+from services.auth_service import AuthService
+from services.company_service import load_companies, add_admin
 from core.database import update_company_admin_password_in_db, verify_company_admin_exists, get_company_admins_from_db
 from utils.auth_utils import hash_password
 
+# 統合認証サービスへの委譲
 def login_user(company_id, username, password):
-    """
-    ユーザーログイン処理（従来の企業ID・ユーザー名方式）
-    
-    Args:
-        company_id (str): 会社ID
-        username (str): ユーザー名
-        password (str): パスワード
-        
-    Returns:
-        tuple: (成功したかどうか, メッセージ)
-    """
-    # テストモードの場合はスーパー管理者ログイン
-    from config.settings import is_test_mode
-    if is_test_mode() and company_id == "admin" and username == "admin" and password == "admin":
-        # セッション情報を確実に保存
-        st.session_state["is_logged_in"] = True
-        st.session_state["is_super_admin"] = True
-        st.session_state["company_id"] = None
-        st.session_state["company_name"] = "スーパー管理者"
-        st.session_state["username"] = username
-        # URLパラメータにログイン状態を追加
-        st.query_params.logged_in = "true"
-        return True, "スーパー管理者としてログインしました"
-    
-    # 企業管理者の認証
-    success, message = verify_company_admin(company_id, username, password)
-    
-    if success:
-        # セッション情報を確実に保存（辞書形式のアクセスを使用）
-        st.session_state["is_logged_in"] = True
-        st.session_state["is_super_admin"] = False
-        st.session_state["company_id"] = company_id  # 会社IDを明示的に保存
-        st.session_state["company_name"] = message   # 会社名
-        st.session_state["username"] = username
-        # URLパラメータにログイン状態を追加
-        st.query_params.logged_in = "true"
-        return True, f"{message}の管理者としてログインしました"
-    
-    return False, message
+    """後方互換性のためのプロキシ関数"""
+    return AuthService.login_user_traditional(company_id, username, password)
 
-def login_user_by_email(email, password, db_name):
-    """
-    メールアドレスとパスワードでのログイン処理（SQLiteから認証）
-    
-    Args:
-        email (str): メールアドレス
-        password (str): パスワード
-        db_name (str): データベースファイルのパス
-        
-    Returns:
-        tuple: (成功したかどうか, メッセージ, 会社ID)
-    """
-    try:
-        conn = sqlite3.connect(db_name)
-        c = conn.cursor()
-        
-        # メールアドレスとパスワードで検索（認証済みのユーザーのみ）
-        c.execute("""
-            SELECT company_id, company_name, name, email 
-            FROM users 
-            WHERE email = ? AND password = ? AND is_verified = 1
-        """, (email, hash_password_sqlite(password)))
-        
-        user = c.fetchone()
-        conn.close()
-        
-        if user:
-            company_id, company_name, user_name, user_email = user
-            
-            # セッション情報を設定
-            st.session_state["is_logged_in"] = True
-            st.session_state["is_super_admin"] = False
-            st.session_state["company_id"] = company_id  # 会社名を会社IDとして使用
-            st.session_state["company_name"] = company_name
-            st.session_state["username"] = user_name
-            st.session_state["user_email"] = user_email
-            
-            # URLパラメータにログイン状態を追加
-            st.query_params.logged_in = "true"
-            
-            return True, f"{company_name}の管理者として", company_name
+def login_user_by_email(email, password, db_name=None):
+    """後方互換性のためのプロキシ関数（db_nameパラメータは無視）"""
+    result = AuthService.login_user_by_email(email, password)
+    # 元の戻り値形式に合わせる
+    if len(result) == 6:
+        success, message, company_id, company_name, user_name, user_email = result
+        if success:
+            return True, message, company_name
         else:
-            return False, "メールアドレスまたはパスワードが間違っているか、メール認証が完了していません", None
-            
-    except Exception as e:
-        return False, f"データベースエラー: {e}", None
+            return False, message, None
+    return False, "認証エラー", None
 
 def logout_user():
-    """
-    ユーザーログアウト処理
-    """
-    # セッション情報の削除
-    for key in ["is_logged_in", "is_super_admin", "company_id", "company_name", "username", "user_email"]:
-        if key in st.session_state:
-            del st.session_state[key]
-    
-    # URLパラメータからログイン状態を削除
-    if "logged_in" in st.query_params:
-        # 直接削除はできないため、新しいパラメータセットを作成
-        current_params = dict(st.query_params)
-        if "logged_in" in current_params:
-            del current_params["logged_in"]
-        # 他のパラメータは維持
-        st.query_params.update(**current_params)
-    
-    return True, "ログアウトしました"
+    """後方互換性のためのプロキシ関数"""
+    return AuthService.logout_user()
 
 def is_logged_in():
-    """
-    ログイン状態かどうかを確認
-    
-    Returns:
-        bool: ログイン状態ならTrue
-    """
-    # 両方のソースからログイン状態を確認
-    session_logged_in = "is_logged_in" in st.session_state and st.session_state["is_logged_in"] is True
-    param_logged_in = st.query_params.get("logged_in") == "true"
-    
-    # どちらかがTrueならログイン中と見なす
-    return session_logged_in or param_logged_in
+    """後方互換性のためのプロキシ関数"""
+    return AuthService.is_logged_in()
 
 def is_super_admin():
-    """
-    スーパー管理者かどうかを確認
-    
-    Returns:
-        bool: スーパー管理者ならTrue
-    """
-    return is_logged_in() and "is_super_admin" in st.session_state and st.session_state["is_super_admin"] is True
+    """後方互換性のためのプロキシ関数"""
+    return AuthService.is_super_admin()
 
 def get_current_company_id():
-    """
-    現在ログイン中の会社IDを取得
-    
-    Returns:
-        str: 会社ID
-    """
-    if is_logged_in():
-        # まずcompany_idをチェック
-        if "company_id" in st.session_state and st.session_state["company_id"]:
-            return st.session_state["company_id"]
-        
-        # なければselected_companyをチェック
-        if "selected_company" in st.session_state:
-            # selected_companyの値をcompany_idにも設定して一貫性を保つ
-            company_id = st.session_state["selected_company"]
-            st.session_state["company_id"] = company_id
-            return company_id
-    
-    # URLパラメータから取得
-    current_company = st.query_params.get("company")
-    if current_company:
-        # 見つかった値をセッションにも保存
-        st.session_state["company_id"] = current_company
-        return current_company
-    
-    return None
+    """後方互換性のためのプロキシ関数"""
+    return AuthService.get_current_company_id()
 
 def admin_management_page():
     """
@@ -209,22 +84,94 @@ def admin_management_page():
     else:
         st.info("管理者アカウントがありません")
     
-    # パスワード変更フォーム
-    st.subheader("パスワード変更")
+    # タブで機能を分ける
+    tab1, tab2, tab3 = st.tabs(["会社名変更", "ユーザー名変更", "パスワード変更"])
     
-    # 管理者選択（自分も含む）
-    admin_list = list(companies[company_id]["admins"].keys())
+    with tab1:
+        # 会社名変更フォーム
+        st.subheader("会社名変更")
+        
+        current_company_name = st.session_state.get('company_name', companies[company_id]["name"])
+        st.info(f"現在の会社名: {current_company_name}")
+        
+        with st.form("change_company_name_form"):
+            new_company_name = st.text_input("新しい会社名", value=current_company_name)
+            
+            change_company_name_submit = st.form_submit_button("会社名を変更")
+            
+            if change_company_name_submit:
+                if not new_company_name:
+                    st.error("会社名を入力してください")
+                elif new_company_name == current_company_name:
+                    st.info("会社名に変更はありません")
+                else:
+                    try:
+                        from core.database import update_company_name_in_db
+                        
+                        # データベースを更新
+                        db_success = update_company_name_in_db(company_id, new_company_name)
+                        
+                        if db_success:
+                            st.session_state["company_name"] = new_company_name
+                            st.success(f"会社名を '{new_company_name}' に変更しました")
+                            st.rerun()
+                        else:
+                            st.error("会社名の変更に失敗しました")
+                            
+                    except Exception as e:
+                        st.error(f"会社名変更中にエラーが発生しました: {str(e)}")
     
-    with st.form("change_password_form"):
-        selected_admin = st.selectbox(
-            "パスワードを変更する管理者", 
-            admin_list
-        )
+    with tab2:
+        # ユーザー名変更フォーム
+        st.subheader("ユーザー名変更")
         
-        new_password = st.text_input("新しいパスワード", type="password")
-        confirm_password = st.text_input("パスワード確認", type="password")
+        current_username = st.session_state.get('username', '')
+        st.info(f"現在のユーザー名: {current_username}")
         
-        change_password_submit = st.form_submit_button("パスワードを変更")
+        with st.form("change_username_form"):
+            new_username = st.text_input("新しいユーザー名", value=current_username)
+            
+            change_username_submit = st.form_submit_button("ユーザー名を変更")
+            
+            if change_username_submit:
+                if not new_username:
+                    st.error("ユーザー名を入力してください")
+                elif new_username == current_username:
+                    st.info("ユーザー名に変更はありません")
+                else:
+                    try:
+                        from core.database import update_username_in_db
+                        
+                        # データベースを更新
+                        db_success = update_username_in_db(company_id, current_username, new_username)
+                        
+                        if db_success:
+                            st.session_state["username"] = new_username
+                            st.success(f"ユーザー名を '{new_username}' に変更しました")
+                            st.rerun()
+                        else:
+                            st.error("ユーザー名の変更に失敗しました")
+                            
+                    except Exception as e:
+                        st.error(f"ユーザー名変更中にエラーが発生しました: {str(e)}")
+    
+    with tab3:
+        # パスワード変更フォーム
+        st.subheader("パスワード変更")
+        
+        # 管理者選択（自分も含む）
+        admin_list = list(companies[company_id]["admins"].keys())
+        
+        with st.form("change_password_form"):
+            selected_admin = st.selectbox(
+                "パスワードを変更する管理者", 
+                admin_list
+            )
+            
+            new_password = st.text_input("新しいパスワード", type="password")
+            confirm_password = st.text_input("パスワード確認", type="password")
+            
+            change_password_submit = st.form_submit_button("パスワードを変更")
         
         if change_password_submit:
             if not new_password:
@@ -246,12 +193,6 @@ def admin_management_page():
                     hashed_new_password = hash_password(new_password)
                     print(f"[ADMIN_PAGE] ハッシュ化されたパスワード: {hashed_new_password[:20]}...")
                     
-                    # JSONファイルのパスワードを変更
-                    print(f"[ADMIN_PAGE] JSONファイル更新開始")
-                    companies[company_id]["admins"][selected_admin]["password"] = hashed_new_password
-                    json_success = save_companies(companies)
-                    print(f"[ADMIN_PAGE] JSONファイル更新結果: {json_success}")
-                    
                     # データベースのパスワードを変更
                     print(f"[ADMIN_PAGE] データベース更新開始")
                     print(f"[ADMIN_PAGE] update_company_admin_password_in_db({company_id}, {new_password[:3]}***)")
@@ -267,21 +208,13 @@ def admin_management_page():
                         for admin_name, admin_info in updated_admins.items():
                             print(f"[ADMIN_PAGE] 管理者: {admin_name}, パスワード: {admin_info['password'][:20]}...")
                     
-                    if json_success and db_success:
-                        st.success(f"管理者 '{selected_admin}' のパスワードを変更しました（JSON・DB両方更新完了）")
-                        print(f"[ADMIN_PAGE] パスワード変更完了: 両方成功")
-                        st.rerun()
-                    elif json_success and not db_success:
-                        st.warning(f"管理者 '{selected_admin}' のパスワードを変更しました（JSONファイルのみ更新、DB更新に失敗）")
-                        print(f"[ADMIN_PAGE] パスワード変更完了: JSONのみ成功")
-                        st.rerun()
-                    elif not json_success and db_success:
-                        st.warning(f"管理者 '{selected_admin}' のパスワードを変更しました（DBのみ更新、JSONファイル更新に失敗）")
-                        print(f"[ADMIN_PAGE] パスワード変更完了: DBのみ成功")
+                    if db_success:
+                        st.success(f"管理者 '{selected_admin}' のパスワードを変更しました")
+                        print(f"[ADMIN_PAGE] パスワード変更完了: 成功")
                         st.rerun()
                     else:
-                        st.error("パスワード変更に失敗しました（JSON・DB両方とも更新失敗）")
-                        print(f"[ADMIN_PAGE] パスワード変更失敗: 両方失敗")
+                        st.error("パスワード変更に失敗しました")
+                        print(f"[ADMIN_PAGE] パスワード変更失敗")
                         
                 except Exception as e:
                     print(f"[ADMIN_PAGE] パスワード変更エラー: {str(e)}")

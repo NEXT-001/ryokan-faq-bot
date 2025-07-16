@@ -170,14 +170,27 @@ def save_company_to_db(company_id, company_name, created_at, faq_count=0):
         if created_at is None:
             created_at = datetime.now().isoformat()
         
-        query = """
-            INSERT OR REPLACE INTO companies (id, name, created_at, faq_count, last_updated)
-            VALUES (?, ?, ?, ?, ?)
-        """
         last_updated = datetime.now().isoformat()
         
-        execute_query(query, (company_id, company_name, created_at, faq_count, last_updated))
-        print(f"[DATABASE] 会社保存完了: {company_id}")
+        # 既存の会社が存在するかチェック
+        if company_exists_in_db(company_id):
+            # 既存の会社情報を更新（FAQデータを保持）
+            query = """
+                UPDATE companies 
+                SET name = ?, last_updated = ?
+                WHERE id = ?
+            """
+            execute_query(query, (company_name, last_updated, company_id))
+            print(f"[DATABASE] 会社更新完了: {company_id}")
+        else:
+            # 新しい会社を作成
+            query = """
+                INSERT INTO companies (id, name, created_at, faq_count, last_updated)
+                VALUES (?, ?, ?, ?, ?)
+            """
+            execute_query(query, (company_id, company_name, created_at, faq_count, last_updated))
+            print(f"[DATABASE] 会社作成完了: {company_id}")
+        
         return True
         
     except Exception as e:
@@ -209,15 +222,30 @@ def save_company_admin_to_db(company_id, username, password, email, created_at):
     try:
         if created_at is None:
             created_at = datetime.now().isoformat()
-            
-        query = """
-            INSERT OR REPLACE INTO company_admins 
-            (company_id, username, password, email, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        """
         
-        execute_query(query, (company_id, username, password, email, created_at))
-        print(f"[DATABASE] 管理者保存完了: {company_id}/{username}")
+        # 既存の管理者が存在するかチェック
+        existing_query = "SELECT id FROM company_admins WHERE company_id = ? AND username = ?"
+        existing_admin = fetch_one(existing_query, (company_id, username))
+        
+        if existing_admin:
+            # 既存の管理者情報を更新
+            query = """
+                UPDATE company_admins 
+                SET password = ?, email = ?
+                WHERE company_id = ? AND username = ?
+            """
+            execute_query(query, (password, email, company_id, username))
+            print(f"[DATABASE] 管理者更新完了: {company_id}/{username}")
+        else:
+            # 新しい管理者を作成
+            query = """
+                INSERT INTO company_admins 
+                (company_id, username, password, email, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """
+            execute_query(query, (company_id, username, password, email, created_at))
+            print(f"[DATABASE] 管理者作成完了: {company_id}/{username}")
+        
         return True
         
     except Exception as e:
@@ -576,15 +604,34 @@ def check_database_integrity():
 def save_line_settings_to_db(company_id, channel_access_token, channel_secret, user_id, low_similarity_threshold=0.4):
     """LINE設定をデータベースに保存"""
     try:
-        query = """
-            INSERT OR REPLACE INTO line_settings 
-            (company_id, channel_access_token, channel_secret, user_id, low_similarity_threshold, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """
         updated_at = datetime.now().isoformat()
         
-        execute_query(query, (company_id, channel_access_token, channel_secret, user_id, low_similarity_threshold, updated_at))
-        print(f"[DATABASE] LINE設定保存完了: {company_id}")
+        # 既存のLINE設定が存在するかチェック
+        existing_query = "SELECT id FROM line_settings WHERE company_id = ?"
+        existing_setting = fetch_one(existing_query, (company_id,))
+        
+        if existing_setting:
+            # 既存のLINE設定を更新
+            query = """
+                UPDATE line_settings 
+                SET channel_access_token = ?, channel_secret = ?, user_id = ?, 
+                    low_similarity_threshold = ?, updated_at = ?
+                WHERE company_id = ?
+            """
+            execute_query(query, (channel_access_token, channel_secret, user_id, 
+                                low_similarity_threshold, updated_at, company_id))
+            print(f"[DATABASE] LINE設定更新完了: {company_id}")
+        else:
+            # 新しいLINE設定を作成
+            query = """
+                INSERT INTO line_settings 
+                (company_id, channel_access_token, channel_secret, user_id, low_similarity_threshold, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """
+            execute_query(query, (company_id, channel_access_token, channel_secret, user_id, 
+                                low_similarity_threshold, updated_at))
+            print(f"[DATABASE] LINE設定作成完了: {company_id}")
+        
         return True
         
     except Exception as e:
@@ -868,6 +915,46 @@ def verify_company_admin_exists(company_id):
         
     except Exception as e:
         print(f"[DATABASE] 管理者存在チェックエラー: {e}")
+        return False
+
+def update_company_name_in_db(company_id, new_company_name):
+    """会社名をデータベースで更新"""
+    try:
+        # companiesテーブルを更新
+        query1 = "UPDATE companies SET name = ? WHERE id = ?"
+        rows_affected1 = execute_query(query1, (new_company_name, company_id))
+        
+        # usersテーブルを更新
+        query2 = "UPDATE users SET company_name = ? WHERE company_id = ?"
+        rows_affected2 = execute_query(query2, (new_company_name, company_id))
+        
+        if rows_affected1 > 0 or rows_affected2 > 0:
+            print(f"[DATABASE] 会社名更新完了: {company_id} -> {new_company_name}")
+            return True
+        else:
+            print(f"[DATABASE] 会社名更新失敗: 会社が見つかりません {company_id}")
+            return False
+        
+    except Exception as e:
+        print(f"[DATABASE] 会社名更新エラー: {e}")
+        return False
+
+def update_username_in_db(company_id, old_username, new_username):
+    """ユーザー名をデータベースで更新"""
+    try:
+        # usersテーブルを更新
+        query = "UPDATE users SET name = ? WHERE company_id = ? AND name = ?"
+        rows_affected = execute_query(query, (new_username, company_id, old_username))
+        
+        if rows_affected > 0:
+            print(f"[DATABASE] ユーザー名更新完了: {old_username} -> {new_username}")
+            return True
+        else:
+            print(f"[DATABASE] ユーザー名更新失敗: ユーザーが見つかりません {old_username}")
+            return False
+        
+    except Exception as e:
+        print(f"[DATABASE] ユーザー名更新エラー: {e}")
         return False
     
 # モジュール読み込み時に初期化
