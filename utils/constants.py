@@ -1,9 +1,17 @@
 """
 定数とユーティリティ関数
 utils/constants.py
+
+⚠️ 注意: 設定管理機能は config/unified_config.py に移行されました
+このファイルは純粋な定数とユーティリティ関数のみを含むべきです
+
+設定関連の機能は非推奨となり、UnifiedConfig を使用してください
 """
 import os
 import streamlit as st
+
+# 新しい統一設定をインポート
+from config.unified_config import UnifiedConfig
 
 # ディレクトリパス定数
 DATA_DIR = "data"

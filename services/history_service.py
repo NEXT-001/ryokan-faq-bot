@@ -32,10 +32,10 @@ def cleanup_old_history(company_id=None):
                 df['timestamp'] = pd.to_datetime(df['timestamp'])
                 
                 # 1週間以内のデータのみを保持
-                df_recent = df[df['timestamp'] >= one_week_ago]
+                df_recent = df[df['timestamp'] >= one_week_ago].copy()
                 
                 # 元の形式（文字列）に戻す
-                df_recent['timestamp'] = df_recent['timestamp'].dt.strftime("%Y-%m-%d %H:%M:%S")
+                df_recent.loc[:, 'timestamp'] = df_recent['timestamp'].dt.strftime("%Y-%m-%d %H:%M:%S")
                 
                 # ファイルを更新（1週間以内のデータのみ保存）
                 df_recent.to_csv(history_file, index=False, quoting=1)

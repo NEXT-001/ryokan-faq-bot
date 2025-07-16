@@ -31,11 +31,21 @@ Ryokan FAQ Botは、日本の旅館・ホテル業界向けに特化したマル
 
 1. リポジトリをクローンまたはダウンロードする
 2. 必要なパッケージをインストールする:
-   ```
+   
+   **本番環境・デプロイ用**:
+   ```bash
    pip install -r requirements.txt
    ```
-3. フォルダ構造の初期化:
+   
+   **開発環境用（テスト・デバッグツール含む）**:
+   ```bash
+   pip install -r requirements-dev.txt
    ```
+   
+   > 📋 **依存関係の詳細**: [DEPENDENCY_MANAGEMENT.md](DEPENDENCY_MANAGEMENT.md) を参照してください
+
+3. フォルダ構造の初期化:
+   ```bash
    mkdir -p data/companies/demo-company
    ```
 

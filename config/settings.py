@@ -1,9 +1,19 @@
 # settings.py
+# 
+# ⚠️ 非推奨: このファイルは config/unified_config.py に統合されました
+# 新しいコードでは config.unified_config.UnifiedConfig を使用してください
+# 
+# このファイルは後方互換性のためにのみ残されています
+#
+
 import os
 import streamlit as st
 from dotenv import load_dotenv
 import anthropic
 import json
+
+# 新しい統一設定をインポート
+from config.unified_config import UnifiedConfig
 
 # .envファイルを読み込む
 load_dotenv()

@@ -198,45 +198,6 @@ def load_companies(company_id=None):
         print(f"[COMPANY_SERVICE] 企業読み込みエラー: {e}")
         return {}
 
-def save_companies(companies):
-    """
-    会社情報を保存する（後方互換性のため）
-    
-    Args:
-        companies (dict): 企業情報の辞書
-    
-    Returns:
-        bool: 全ての保存が成功した場合True、失敗した場合False
-    """
-    print(f"[SAVE_COMPANIES] 保存開始: {len(companies)}社")
-    
-    all_success = True
-    
-    # 各企業の設定を個別に保存
-    for company_id, company_data in companies.items():
-        print(f"[SAVE_COMPANIES] 会社ID: {company_id} の保存開始")
-        
-        settings = {
-            "company_id": company_id,
-            "company_name": company_data.get("name", company_id),
-            "created_at": company_data.get("created_at", datetime.now().isoformat()),
-            "faq_count": 0,
-            "last_updated": datetime.now().isoformat(),
-            "admins": company_data.get("admins", {})
-        }
-        
-        print(f"[SAVE_COMPANIES] 管理者数: {len(settings['admins'])}")
-        for admin_name, admin_info in settings['admins'].items():
-            print(f"[SAVE_COMPANIES] 管理者: {admin_name}, パスワード: {admin_info.get('password', 'N/A')[:20]}...")
-        
-        success = save_company_settings(company_id, settings)
-        print(f"[SAVE_COMPANIES] 会社ID: {company_id} の保存結果: {success}")
-        
-        if not success:
-            all_success = False
-    
-    print(f"[SAVE_COMPANIES] 全体保存結果: {all_success}")
-    return all_success
 
 def verify_company_admin(company_id, username, password):
     """会社管理者の認証を行う（SQLite中心）"""
