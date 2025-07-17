@@ -4,7 +4,7 @@ import smtplib
 import streamlit as st
 import traceback
 from email.mime.text import MIMEText
-from utils.constants import VERIFICATION_URL
+from config.unified_config import UnifiedConfig
 
 def send_verification_email(email, token):
     """認証メールを送信（デバッグ強化版）"""
@@ -26,7 +26,7 @@ def send_verification_email(email, token):
             return False
         
         # メール本文作成
-        verification_link = f"{VERIFICATION_URL}?token={token}"
+        verification_link = UnifiedConfig.generate_verification_url(token)
         print(f"[EMAIL] 認証リンク: {verification_link}")
         
         msg = MIMEText(f"以下のリンクをクリックして登録を完了してください:\n{verification_link}")
