@@ -137,6 +137,20 @@ def initialize_database():
                 )
             """)
             
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS search_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    company_id TEXT NOT NULL,
+                    user_info TEXT,
+                    question TEXT NOT NULL,
+                    answer TEXT NOT NULL,
+                    input_tokens INTEGER DEFAULT 0,
+                    output_tokens INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+                )
+            """)
+            
             # インデックスの作成
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_company_admins_company_id ON company_admins(company_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_company_admins_email ON company_admins(email)")
@@ -146,6 +160,8 @@ def initialize_database():
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_line_settings_company_id ON line_settings(company_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_faq_history_company_id ON faq_history(company_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_faq_history_created_at ON faq_history(created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_search_history_company_id ON search_history(company_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_search_history_created_at ON search_history(created_at)")
             
         print("[DATABASE] データベース初期化完了")
         return True
@@ -815,6 +831,93 @@ def count_faq_history(company_id):
         return result[0] if result else 0
     except Exception as e:
         print(f"[DATABASE] FAQ履歴件数取得エラー: {e}")
+        return 0
+
+# =============================================================================
+# 検索履歴関連の関数群
+# =============================================================================
+
+def save_search_history_to_db(company_id, question, answer, input_tokens=0, output_tokens=0, user_info=""):
+    """検索履歴をデータベースに保存"""
+    try:
+        query = """
+            INSERT INTO search_history 
+            (company_id, user_info, question, answer, input_tokens, output_tokens, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """
+        created_at = datetime.now().isoformat()
+        
+        execute_query(query, (company_id, user_info, question, answer, input_tokens, output_tokens, created_at))
+        print(f"[DATABASE] 検索履歴保存完了: {company_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[DATABASE] 検索履歴保存エラー: {e}")
+        return False
+
+def get_search_history_from_db(company_id, limit=100):
+    """検索履歴をデータベースから取得"""
+    try:
+        query = """
+            SELECT * FROM search_history 
+            WHERE company_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT ?
+        """
+        results = fetch_dict(query, (company_id, limit))
+        return results
+        
+    except Exception as e:
+        print(f"[DATABASE] 検索履歴取得エラー: {e}")
+        return []
+
+def cleanup_old_search_history(company_id=None, days=7):
+    """古い検索履歴を削除（デフォルト7日間）"""
+    try:
+        from datetime import timedelta
+        
+        # 指定日数前の日時を計算
+        cutoff_date = datetime.now() - timedelta(days=days)
+        cutoff_str = cutoff_date.isoformat()
+        
+        if company_id:
+            # 特定の会社の古い履歴を削除
+            query = "DELETE FROM search_history WHERE company_id = ? AND created_at < ?"
+            rows_affected = execute_query(query, (company_id, cutoff_str))
+        else:
+            # 全会社の古い履歴を削除
+            query = "DELETE FROM search_history WHERE created_at < ?"
+            rows_affected = execute_query(query, (cutoff_str,))
+        
+        if rows_affected > 0:
+            print(f"[DATABASE] 古い検索履歴を{rows_affected}件削除しました")
+        
+        return True
+        
+    except Exception as e:
+        print(f"[DATABASE] 検索履歴クリーンアップエラー: {e}")
+        return False
+
+def delete_search_history_from_db(company_id):
+    """検索履歴をデータベースから削除"""
+    try:
+        query = "DELETE FROM search_history WHERE company_id = ?"
+        execute_query(query, (company_id,))
+        print(f"[DATABASE] 検索履歴削除完了: {company_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[DATABASE] 検索履歴削除エラー: {e}")
+        return False
+
+def count_search_history(company_id):
+    """検索履歴の件数を取得"""
+    try:
+        query = "SELECT COUNT(*) FROM search_history WHERE company_id = ?"
+        result = fetch_one(query, (company_id,))
+        return result[0] if result else 0
+    except Exception as e:
+        print(f"[DATABASE] 検索履歴件数取得エラー: {e}")
         return 0
 
 # 便利な関数
