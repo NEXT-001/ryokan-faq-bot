@@ -37,6 +37,3 @@ def login_user_by_email(email, password):
     """メールアドレスとパスワードでのログイン（プロキシ）"""
     return AuthService.login_user_by_email(email, password)
 
-def send_verification_email(email, token):
-    """認証メールを送信（プロキシ）"""
-    return AuthService._send_verification_email(email, token)

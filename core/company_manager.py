@@ -299,40 +299,6 @@ def create_company_folder_structure(company_id, company_name):
         print(f"[FOLDER TRACEBACK] {traceback.format_exc()}")
         return False
 
-def get_company_folder_info(company_id):
-    """
-    会社フォルダの情報を取得する（デバッグ用）
-    
-    Args:
-        company_id (str): 会社ID
-        
-    Returns:
-        dict: フォルダ情報
-    """
-    folder_path = get_company_folder_path(company_id)
-    
-    info = {
-        "folder_exists": os.path.exists(folder_path),
-        "folder_path": folder_path,
-        "files": {}
-    }
-    
-    if info["folder_exists"]:
-        files_to_check = ["faq.csv", "faq_with_embeddings.pkl", "history.csv"]
-        for file_name in files_to_check:
-            file_path = os.path.join(folder_path, file_name)
-            if os.path.exists(file_path):
-                info["files"][file_name] = {
-                    "exists": True,
-                    "size": os.path.getsize(file_path)
-                }
-            else:
-                info["files"][file_name] = {
-                    "exists": False,
-                    "size": 0
-                }
-    
-    return info
 
 def validate_company_id(company_id):
     """会社IDの妥当性をチェック"""

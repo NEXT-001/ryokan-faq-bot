@@ -42,7 +42,6 @@ def load_faq_data(company_id):
         # エラーの場合は空のDataFrameを返す
         return pd.DataFrame(columns=["question", "answer"])
 
-def save_faq_data(df, company_id):
     """
     FAQデータをデータベースに保存し、エンベディングを更新する
     

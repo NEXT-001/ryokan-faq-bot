@@ -214,30 +214,6 @@ def get_db_path(company_id=None):
     else:
         return os.path.join(get_data_path(), DB_NAME)
 
-def validate_company_id(company_id):
-    """会社IDの妥当性をチェック"""
-    if not company_id:
-        return False
-    
-    # 長さチェック
-    if len(company_id) > 50:
-        return False
-    
-    # 文字種チェック（英数字、ハイフン、アンダースコアのみ）
-    import re
-    if not re.match(r'^[a-zA-Z0-9_-]+$', company_id):
-        return False
-    
-    return True
-
-def validate_email(email):
-    """メールアドレスの妥当性をチェック"""
-    if not email:
-        return False
-    
-    import re
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
 
 def safe_import(module_name, function_name=None):
     """安全にモジュールをインポートする"""
@@ -279,21 +255,6 @@ def is_allowed_file_type(filename):
     """許可されたファイルタイプかチェック"""
     return get_file_extension(filename) in SUPPORTED_FILE_TYPES
 
-def generate_verification_url(company_id, token):
-    """認証用URLを生成"""
-    return f"{VERIFICATION_URL}&company_id={company_id}&token={token}"
-
-def generate_admin_url(company_id):
-    """管理者用URLを生成"""
-    return f"{ADMIN_URL}&company_id={company_id}"
-
-def generate_user_url(company_id):
-    """ユーザー用URLを生成"""
-    return f"{BASE_URL}/?company_id={company_id}"
-
-def generate_login_url(company_id):
-    """ログイン用URLを生成"""
-    return f"{LOGIN_URL}&company_id={company_id}"
 
 def generate_token(length=None):
     """ランダムトークンを生成"""
@@ -341,11 +302,6 @@ MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_DURATION_MINUTES = 30
 
 # URL関連の定数
-BASE_URL = get_env_var("BASE_URL", "http://localhost:8501")
-VERIFICATION_URL = f"{BASE_URL}/?mode=verify"
-REGISTRATION_URL = f"{BASE_URL}/?mode=reg"
-ADMIN_URL = f"{BASE_URL}/?mode=admin"
-LOGIN_URL = f"{BASE_URL}/?mode=login"
 
 # メール認証関連の定数
 EMAIL_VERIFICATION_TIMEOUT_HOURS = 24

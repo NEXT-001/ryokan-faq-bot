@@ -137,6 +137,20 @@ def initialize_database():
                 )
             """)
             
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS search_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    company_id TEXT NOT NULL,
+                    user_info TEXT,
+                    question TEXT NOT NULL,
+                    answer TEXT NOT NULL,
+                    input_tokens INTEGER DEFAULT 0,
+                    output_tokens INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+                )
+            """)
+            
             # インデックスの作成
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_company_admins_company_id ON company_admins(company_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_company_admins_email ON company_admins(email)")
@@ -146,6 +160,8 @@ def initialize_database():
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_line_settings_company_id ON line_settings(company_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_faq_history_company_id ON faq_history(company_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_faq_history_created_at ON faq_history(created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_search_history_company_id ON search_history(company_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_search_history_created_at ON search_history(created_at)")
             
         print("[DATABASE] データベース初期化完了")
         return True
@@ -218,30 +234,30 @@ def get_company_from_db(company_id):
         return None
 
 def save_company_admin_to_db(company_id, username, password, email, created_at):
-    """会社管理者をデータベースに保存"""
+    """会社管理者をusersテーブルに保存"""
     try:
         if created_at is None:
             created_at = datetime.now().isoformat()
         
         # 既存の管理者が存在するかチェック
-        existing_query = "SELECT id FROM company_admins WHERE company_id = ? AND username = ?"
+        existing_query = "SELECT id FROM users WHERE company_id = ? AND name = ?"
         existing_admin = fetch_one(existing_query, (company_id, username))
         
         if existing_admin:
             # 既存の管理者情報を更新
             query = """
-                UPDATE company_admins 
+                UPDATE users 
                 SET password = ?, email = ?
-                WHERE company_id = ? AND username = ?
+                WHERE company_id = ? AND name = ?
             """
             execute_query(query, (password, email, company_id, username))
             print(f"[DATABASE] 管理者更新完了: {company_id}/{username}")
         else:
             # 新しい管理者を作成
             query = """
-                INSERT INTO company_admins 
-                (company_id, username, password, email, created_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO users 
+                (company_id, name, password, email, created_at, is_verified)
+                VALUES (?, ?, ?, ?, ?, 1)
             """
             execute_query(query, (company_id, username, password, email, created_at))
             print(f"[DATABASE] 管理者作成完了: {company_id}/{username}")
@@ -253,14 +269,14 @@ def save_company_admin_to_db(company_id, username, password, email, created_at):
         return False
 
 def get_company_admins_from_db(company_id):
-    """会社の管理者一覧をデータベースから取得"""
+    """会社の管理者一覧をusersテーブルから取得"""
     try:
-        query = "SELECT * FROM company_admins WHERE company_id = ?"
+        query = "SELECT name, email, password, created_at FROM users WHERE company_id = ?"
         results = fetch_dict(query, (company_id,))
         
         admins = {}
         for row in results:
-            admins[row["username"]] = {
+            admins[row["name"]] = {
                 "password": row["password"],
                 "email": row["email"],
                 "created_at": row["created_at"]
@@ -273,9 +289,9 @@ def get_company_admins_from_db(company_id):
         return {}
 
 def delete_company_admins_from_db(company_id):
-    """会社の全管理者をデータベースから削除"""
+    """会社の全管理者をusersテーブルから削除"""
     try:
-        query = "DELETE FROM company_admins WHERE company_id = ?"
+        query = "DELETE FROM users WHERE company_id = ?"
         execute_query(query, (company_id,))
         print(f"[DATABASE] 管理者削除完了: {company_id}")
         return True
@@ -362,10 +378,14 @@ def authenticate_user_by_email(email, password):
         result = fetch_dict_one(query, (email, hashed_password))
         
         if result:
+            # companiesテーブルから会社名を取得
+            company_info = get_company_from_db(result["company_id"])
+            company_name = company_info["company_name"] if company_info else "不明な企業"
+            
             return True, {
                 "id": result["id"],
                 "company_id": result["company_id"],
-                "company_name": result["company_name"].strip(),
+                "company_name": company_name,
                 "name": result["name"],
                 "email": result["email"]
             }
@@ -813,6 +833,93 @@ def count_faq_history(company_id):
         print(f"[DATABASE] FAQ履歴件数取得エラー: {e}")
         return 0
 
+# =============================================================================
+# 検索履歴関連の関数群
+# =============================================================================
+
+def save_search_history_to_db(company_id, question, answer, input_tokens=0, output_tokens=0, user_info=""):
+    """検索履歴をデータベースに保存"""
+    try:
+        query = """
+            INSERT INTO search_history 
+            (company_id, user_info, question, answer, input_tokens, output_tokens, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """
+        created_at = datetime.now().isoformat()
+        
+        execute_query(query, (company_id, user_info, question, answer, input_tokens, output_tokens, created_at))
+        print(f"[DATABASE] 検索履歴保存完了: {company_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[DATABASE] 検索履歴保存エラー: {e}")
+        return False
+
+def get_search_history_from_db(company_id, limit=100):
+    """検索履歴をデータベースから取得"""
+    try:
+        query = """
+            SELECT * FROM search_history 
+            WHERE company_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT ?
+        """
+        results = fetch_dict(query, (company_id, limit))
+        return results
+        
+    except Exception as e:
+        print(f"[DATABASE] 検索履歴取得エラー: {e}")
+        return []
+
+def cleanup_old_search_history(company_id=None, days=7):
+    """古い検索履歴を削除（デフォルト7日間）"""
+    try:
+        from datetime import timedelta
+        
+        # 指定日数前の日時を計算
+        cutoff_date = datetime.now() - timedelta(days=days)
+        cutoff_str = cutoff_date.isoformat()
+        
+        if company_id:
+            # 特定の会社の古い履歴を削除
+            query = "DELETE FROM search_history WHERE company_id = ? AND created_at < ?"
+            rows_affected = execute_query(query, (company_id, cutoff_str))
+        else:
+            # 全会社の古い履歴を削除
+            query = "DELETE FROM search_history WHERE created_at < ?"
+            rows_affected = execute_query(query, (cutoff_str,))
+        
+        if rows_affected > 0:
+            print(f"[DATABASE] 古い検索履歴を{rows_affected}件削除しました")
+        
+        return True
+        
+    except Exception as e:
+        print(f"[DATABASE] 検索履歴クリーンアップエラー: {e}")
+        return False
+
+def delete_search_history_from_db(company_id):
+    """検索履歴をデータベースから削除"""
+    try:
+        query = "DELETE FROM search_history WHERE company_id = ?"
+        execute_query(query, (company_id,))
+        print(f"[DATABASE] 検索履歴削除完了: {company_id}")
+        return True
+        
+    except Exception as e:
+        print(f"[DATABASE] 検索履歴削除エラー: {e}")
+        return False
+
+def count_search_history(company_id):
+    """検索履歴の件数を取得"""
+    try:
+        query = "SELECT COUNT(*) FROM search_history WHERE company_id = ?"
+        result = fetch_one(query, (company_id,))
+        return result[0] if result else 0
+    except Exception as e:
+        print(f"[DATABASE] 検索履歴件数取得エラー: {e}")
+        return 0
+
 # 便利な関数
 def table_exists(table_name):
     """テーブルが存在するかチェック"""
@@ -909,7 +1016,7 @@ def update_company_admin_password_in_db(company_id, new_password):
 def verify_company_admin_exists(company_id):
     """会社管理者が存在するかチェック"""
     try:
-        query = "SELECT username FROM users WHERE company_id = ?"
+        query = "SELECT name FROM users WHERE company_id = ?"
         result = fetch_all(query, (company_id,))
         return len(result) > 0
         
@@ -918,17 +1025,13 @@ def verify_company_admin_exists(company_id):
         return False
 
 def update_company_name_in_db(company_id, new_company_name):
-    """会社名をデータベースで更新"""
+    """会社名をcompaniesテーブルのみで更新"""
     try:
-        # companiesテーブルを更新
-        query1 = "UPDATE companies SET name = ? WHERE id = ?"
-        rows_affected1 = execute_query(query1, (new_company_name, company_id))
+        # companiesテーブルのみを更新
+        query = "UPDATE companies SET name = ? WHERE id = ?"
+        rows_affected = execute_query(query, (new_company_name, company_id))
         
-        # usersテーブルを更新
-        query2 = "UPDATE users SET company_name = ? WHERE company_id = ?"
-        rows_affected2 = execute_query(query2, (new_company_name, company_id))
-        
-        if rows_affected1 > 0 or rows_affected2 > 0:
+        if rows_affected > 0:
             print(f"[DATABASE] 会社名更新完了: {company_id} -> {new_company_name}")
             return True
         else:

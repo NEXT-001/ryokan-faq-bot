@@ -59,16 +59,3 @@ def hide_entire_sidebar():
         </style>
     """, unsafe_allow_html=True)
 
-def show_admin_sidebar():
-    """管理者サイドバーを確実に表示するための設定"""
-    st.markdown("""
-        <style>
-            /* サイドバー自体は表示する */
-            [data-testid="stSidebar"] {
-                display: block !important;
-            }
-            section[data-testid="stSidebar"] {
-                display: block !important;
-            }
-        </style>
-    """, unsafe_allow_html=True)

@@ -14,9 +14,6 @@ from core.database import update_company_admin_password_in_db, verify_company_ad
 from utils.auth_utils import hash_password
 
 # 統合認証サービスへの委譲
-def login_user(company_id, username, password):
-    """後方互換性のためのプロキシ関数"""
-    return AuthService.login_user_traditional(company_id, username, password)
 
 def login_user_by_email(email, password, db_name=None):
     """後方互換性のためのプロキシ関数（db_nameパラメータは無視）"""
