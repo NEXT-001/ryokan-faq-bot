@@ -19,7 +19,7 @@ from core.database import (
 )
 from services.company_service import verify_company_admin
 from utils.company_utils import generate_company_id, create_company_folder_structure
-from utils.constants import TOKEN_EXPIRY_HOURS
+from config.unified_config import UnifiedConfig
 
 
 class AuthService:
@@ -40,7 +40,7 @@ class AuthService:
         """
         # テストモードの場合はスーパー管理者ログイン
         from config.settings import is_test_mode
-        if is_test_mode() and company_id == "admin" and username == "admin" and password == "admin":
+        if UnifiedConfig.is_test_mode() and company_id == "admin" and username == "admin" and password == "admin":
             AuthService._set_session_data(
                 is_logged_in=True,
                 is_super_admin=True,
@@ -208,7 +208,7 @@ class AuthService:
             c = conn.cursor()
             
             # 有効期限をチェックしてトークンを検証
-            expiry_time = datetime.now() - timedelta(hours=TOKEN_EXPIRY_HOURS)
+            expiry_time = datetime.now() - timedelta(hours=UnifiedConfig.TOKEN_EXPIRY_HOURS)
             c.execute("""
                 SELECT id, company_id, email, created_at 
                 FROM users 
@@ -248,7 +248,7 @@ class AuthService:
             c = conn.cursor()
             
             # 有効期限を過ぎたトークンを検索
-            expiry_time = datetime.now() - timedelta(hours=TOKEN_EXPIRY_HOURS)
+            expiry_time = datetime.now() - timedelta(hours=UnifiedConfig.TOKEN_EXPIRY_HOURS)
             
             # 期限切れの未認証ユーザーを削除
             c.execute("""

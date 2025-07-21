@@ -146,7 +146,7 @@ def login_page(company_id):
 
 def admin_dashboard(company_id):
     """管理者ダッシュボード"""
-    from config.settings import is_test_mode
+    from config.unified_config import UnifiedConfig
     
     try:
         # スーパー管理者かどうかを確認

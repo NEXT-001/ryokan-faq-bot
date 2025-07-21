@@ -12,7 +12,7 @@ from core.database import (
     get_db_connection, execute_query, fetch_dict, fetch_dict_one,
     initialize_database, table_exists
 )
-from config.settings import get_data_path
+from config.unified_config import UnifiedConfig
 
 def create_faq_tables():
     """FAQとエンベディング用のテーブルを作成"""
@@ -70,7 +70,7 @@ def deserialize_embedding(binary_data):
 def migrate_company_faq_data(company_id, show_progress=False):
     """指定された会社のFAQデータをDBに移行"""
     try:
-        company_dir = os.path.join(get_data_path(), "companies", company_id)
+        company_dir = UnifiedConfig.get_data_path(company_id)
         
         # CSVファイルの確認
         csv_path = os.path.join(company_dir, "faq.csv")
@@ -185,7 +185,7 @@ def migrate_company_faq_data(company_id, show_progress=False):
 def migrate_all_companies(show_progress=False):
     """全会社のFAQデータを移行"""
     try:
-        companies_dir = os.path.join(get_data_path(), "companies")
+        companies_dir = UnifiedConfig.COMPANIES_DIR
         if not os.path.exists(companies_dir):
             print("[MIGRATION] companiesディレクトリが見つかりません")
             return False
@@ -240,8 +240,8 @@ def migrate_all_companies(show_progress=False):
 def backup_original_data():
     """元のCSV/PKLファイルをバックアップ"""
     try:
-        companies_dir = os.path.join(get_data_path(), "companies")
-        backup_dir = os.path.join(get_data_path(), "backup_csv_pkl")
+        companies_dir = UnifiedConfig.COMPANIES_DIR
+        backup_dir = os.path.join(UnifiedConfig.DATA_DIR, "backup_csv_pkl")
         
         if not os.path.exists(companies_dir):
             print("[MIGRATION] バックアップ対象が見つかりません")
@@ -300,7 +300,7 @@ def verify_migration(company_id):
         embedding_count = embedding_result['COUNT(*)'] if embedding_result else 0
         
         # 元ファイルと比較
-        company_dir = os.path.join(get_data_path(), "companies", company_id)
+        company_dir = UnifiedConfig.get_data_path(company_id)
         csv_path = os.path.join(company_dir, "faq.csv")
         
         original_count = 0
