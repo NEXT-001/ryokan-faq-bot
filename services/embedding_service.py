@@ -9,7 +9,7 @@ import hashlib
 import voyageai
 import time
 import streamlit as st
-from config.settings import is_test_mode, get_data_path
+from config.unified_config import UnifiedConfig
 from services.faq_migration import (
     get_faq_data_from_db, save_faq_to_db, update_faq_in_db,
     init_faq_migration, serialize_embedding, deserialize_embedding
@@ -112,7 +112,7 @@ def get_embedding(text, client=None):
         list: エンベディングベクトル
     """
     # テストモードの場合
-    if is_test_mode():
+    if UnifiedConfig.is_test_mode():
         return get_test_embedding(text)
     
     # クライアントが渡されていない場合は取得
@@ -172,7 +172,7 @@ def create_embeddings(company_id, show_progress=True):
     
     if not faq_data:
         # DBにデータがない場合は、CSVから移行を試行
-        company_dir = os.path.join(get_data_path(), "companies", company_id)
+        company_dir = UnifiedConfig.get_data_path(company_id)
         csv_path = os.path.join(company_dir, "faq.csv")
         
         if not os.path.exists(csv_path):
@@ -204,7 +204,7 @@ def create_embeddings(company_id, show_progress=True):
     print(f"{len(faq_data)}個のFAQエントリを読み込みました。")
     
     # 一時的にテストモードをチェック
-    original_test_mode = is_test_mode()
+    original_test_mode = UnifiedConfig.is_test_mode()
     print(f"現在のテストモード: {original_test_mode}")
     
     # VoyageAI APIクライアントを初期化
@@ -295,7 +295,7 @@ def create_embeddings(company_id, show_progress=True):
             embeddings.append(embedding)
             
             # レート制限に引っかからないように、バッチ処理の場合は一定間隔を空ける
-            if i < len(all_questions) - 1 and not is_test_mode():
+            if i < len(all_questions) - 1 and not UnifiedConfig.is_test_mode():
                 time.sleep(1)  # 1秒待機
                 
         except Exception as e:

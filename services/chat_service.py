@@ -7,15 +7,41 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 import os
 import streamlit as st
-from config.settings import is_test_mode, get_data_path
+import urllib.parse
+import openai
+import re
+from dotenv import load_dotenv
+from config.unified_config import UnifiedConfig
 from services.embedding_service import get_embedding
 from services.line_service import send_line_message  # LINE送信機能をインポート
 from services.faq_migration import get_faq_data_from_db, init_faq_migration
+from services.tourism_service import detect_language, generate_tourism_response_by_city
+
+# 環境変数読み込み
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # 類似度のしきい値（これを下回る場合は不明確な回答となる）
 SIMILARITY_THRESHOLD = 0.6
 # 非常に低い類似度のしきい値（この場合はLINE通知を送る）
 LOW_SIMILARITY_THRESHOLD = 0.4
+
+def add_bing_links_to_brackets(text):
+    """
+    FAQ回答内の[単語]形式の文字列にBing検索リンクを追加
+    例: [金閣寺] → [金閣寺](https://www.bing.com/search?q=金閣寺)
+    """
+    def replace_bracket_with_link(match):
+        word = match.group(1)  # [と]の間の文字を取得
+        encoded_word = urllib.parse.quote(word)
+        bing_url = f"https://www.bing.com/search?q={encoded_word}"
+        return f"[{word}]({bing_url})"
+    
+    # [文字列]のパターンをMarkdownリンクに変換
+    pattern = r'\[([^\[\]]+)\]'
+    result = re.sub(pattern, replace_bracket_with_link, text)
+    
+    return result
 
 def get_response(user_input, company_id=None, user_info=""):
     """
@@ -34,7 +60,7 @@ def get_response(user_input, company_id=None, user_info=""):
         company_id = "demo-company"
     
     # テストモードの場合
-    if is_test_mode():
+    if UnifiedConfig.is_test_mode():
         print(f"テストモードで実行中 - 会社ID: {company_id}")
         # テスト用の回答セット
         test_responses = {
@@ -77,7 +103,7 @@ def get_response(user_input, company_id=None, user_info=""):
         
         if not faq_data:
             # DBにデータがない場合は、従来のPKLファイルから読み込みを試行
-            company_path = os.path.join(get_data_path(), "companies", company_id)
+            company_path = os.path.join(UnifiedConfig.get_data_path(), "companies", company_id)
             faq_path = os.path.join(company_path, "faq_with_embeddings.pkl")
             
             if os.path.exists(faq_path):
@@ -133,6 +159,11 @@ def get_response(user_input, company_id=None, user_info=""):
         # 対応する回答を取得
         answer = valid_faqs[best_idx]["answer"]
         
+        # FAQ回答内の[単語]にBingリンクを追加
+        answer = add_bing_links_to_brackets(answer)
+        
+        user_lang = detect_language(user_input)
+        print(f"質問した言語: {user_lang}")
         # 類似度スコアが低すぎる場合
         if similarity_score < SIMILARITY_THRESHOLD:
             # # 非常に低い類似度の場合
@@ -146,12 +177,16 @@ def get_response(user_input, company_id=None, user_info=""):
                 company_id=company_id
             )
             
-            answer = (
-                "申し訳ございません。その質問については担当者に確認する必要があります。"
-                "しばらくお待ちいただけますでしょうか。\n\n"
-                "I apologize, but I need to check with our staff regarding that question. "
-                "Could you please wait a moment?"
-            )
+            # 観光・グルメ関連質問の場合、ぐるなび検索を提案
+            if _is_restaurant_query(user_input):
+                answer = _generate_gnavi_response(user_input, user_lang)
+            else:
+                answer = (
+                    "申し訳ございません。その質問については担当者に確認する必要があります。"
+                    "しばらくお待ちいただけますでしょうか。\n\n"
+                    "I apologize, but I need to check with our staff regarding that question. "
+                    "Could you please wait a moment?"
+                )
 
         return answer, len(user_input.split()), len(answer.split())
     
@@ -172,3 +207,60 @@ def get_response(user_input, company_id=None, user_info=""):
             print(f"LINE通知エラー: {line_error}")
         
         return error_message, 0, 0
+
+
+def _is_restaurant_query(query: str) -> bool:
+    """
+    質問がレストラン・グルメ関連かを判定
+    """
+    restaurant_keywords = [
+        "レストラン", "食事", "グルメ", "ランチ", "ディナー", "飲食", "料理", 
+        "カフェ", "居酒屋", "食べ物", "美味しい", "おすすめ", "食べる",
+        "restaurant", "food", "eat", "dinner", "lunch", "cafe", "gourmet",
+        "맛집", "음식", "식당", "레스토랑", "카페", "먹다",
+        "餐厅", "美食", "吃", "料理", "咖啡厅"
+    ]
+    return any(keyword in query.lower() for keyword in restaurant_keywords)
+
+
+def _generate_gnavi_response(query: str, user_lang: str) -> str:
+    """
+    ぐるなび検索案内の多言語対応レスポンスを生成
+    """
+    # デフォルトの案内文
+    default_responses = {
+        "ja": "周辺のおすすめレストランはこちらです。以下のリンクをご参照ください。",
+        "en": "Here are recommended restaurants in the area. Please refer to the link below.",
+        "ko": "주변 추천 레스토랑은 여기 있습니다. 아래 링크를 참조해주세요.",
+        "zh": "这里是周边推荐餐厅。请参考以下链接。"
+    }
+    
+    base_text = default_responses.get(user_lang, default_responses["ja"])
+    
+    # OpenAI APIが利用可能な場合は翻訳を試行
+    if openai.api_key:
+        try:
+            language_instruction = {
+                "ja": "次の文章を日本語で自然に出力してください。",
+                "en": "Please output the following sentence naturally in English.",
+                "ko": "다음 문장을 자연스러운 한국어로 출력해주세요.",
+                "zh": "请用自然的中文输出以下句子。"
+            }.get(user_lang, "Please output the following sentence naturally in English.")
+            
+            prompt = f"{language_instruction}\n\n{base_text}"
+            
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=100
+            )
+            base_text = response['choices'][0]['message']['content']
+        except Exception as e:
+            print(f"翻訳エラー: {e}")
+    
+    # ぐるなび検索URL生成（クエリから場所を抽出または既定値を使用）
+    location_param = "レストラン"
+    gnavi_url = f"https://www.gnavi.co.jp/search/k/?word={urllib.parse.quote(location_param)}"
+    
+    return f"**{base_text}**\n\n👉 [ぐるなびでレストランを見る]({gnavi_url})"

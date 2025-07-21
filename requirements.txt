@@ -32,3 +32,7 @@ line-bot-sdk>=3.5.0,<4.0.0
 # - smtplib (メール送信)
 # - os, sys, json, csv, time, datetime, hashlib, threading
 # - pickle, shutil, contextlib
+
+streamlit-js-eval>=0.1.6
+langdetect>=1.0.9
+openai==0.28

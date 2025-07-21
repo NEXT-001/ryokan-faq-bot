@@ -7,10 +7,86 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime
 import time
+import openai
+from dotenv import load_dotenv
 from services.embedding_service import create_embeddings
 from services.login_service import get_current_company_id
 from config.unified_config import UnifiedConfig
 from core.database import execute_query, fetch_dict, fetch_dict_one
+
+# 環境変数読み込み
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+def translate_faq_to_languages(question, answer):
+    """
+    FAQ質問と回答を多言語に翻訳
+    
+    Args:
+        question (str): 日本語の質問
+        answer (str): 日本語の回答
+        
+    Returns:
+        dict: 翻訳結果 {"en": {"question": "...", "answer": "..."}, ...}
+    """
+    if not openai.api_key:
+        return {}
+    
+    target_languages = {
+        "en": "English",
+        "ko": "Korean", 
+        "zh": "Chinese (Simplified)",
+        "zh-tw": "Traditional Chinese (Taiwan)"
+    }
+    
+    translations = {}
+    
+    for lang_code, lang_name in target_languages.items():
+        try:
+            # 質問の翻訳
+            question_prompt = f"""
+以下の日本語の質問を{lang_name}に自然に翻訳してください。観光・宿泊業界の専門用語を適切に使用してください。
+
+日本語: {question}
+
+{lang_name}:
+"""
+            
+            question_response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": question_prompt}],
+                temperature=0.3,
+                max_tokens=200
+            )
+            translated_question = question_response.choices[0].message.content.strip()
+            
+            # 回答の翻訳
+            answer_prompt = f"""
+以下の日本語の回答を{lang_name}に自然に翻訳してください。観光・宿泊業界の専門用語を適切に使用してください。
+
+日本語: {answer}
+
+{lang_name}:
+"""
+            
+            answer_response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": answer_prompt}],
+                temperature=0.3,
+                max_tokens=500
+            )
+            translated_answer = answer_response.choices[0].message.content.strip()
+            
+            translations[lang_code] = {
+                "question": translated_question,
+                "answer": translated_answer
+            }
+            
+        except Exception as e:
+            print(f"{lang_name}翻訳エラー: {e}")
+            continue
+    
+    return translations
 
 def load_faq_data(company_id):
     """
@@ -84,9 +160,68 @@ def load_faq_data(company_id):
         st.error(f"保存エラー: {str(e)}")
         return False
 
+def add_faq_with_translations(question, answer, company_id):
+    """
+    FAQを多言語翻訳付きで追加する
+    
+    Args:
+        question (str): 質問
+        answer (str): 回答
+        company_id (str): 会社ID
+        
+    Returns:
+        tuple: (成功したかどうか, メッセージ)
+    """
+    if not question or not answer:
+        return False, "質問と回答を入力してください。"
+    
+    try:
+        # 重複チェック
+        check_query = "SELECT COUNT(*) as count FROM faq_data WHERE company_id = ? AND question = ?"
+        result = fetch_dict_one(check_query, (company_id, question))
+        if result and result['count'] > 0:
+            return False, "同じ質問が既に登録されています。"
+        
+        # 多言語翻訳を実行
+        translations = translate_faq_to_languages(question, answer)
+        
+        current_time = datetime.now().isoformat()
+        
+        # 日本語版FAQを追加
+        insert_query = """
+            INSERT INTO faq_data (company_id, question, answer, language, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """
+        execute_query(insert_query, (company_id, question, answer, "ja", current_time, current_time))
+        
+        # 翻訳版FAQを追加
+        for lang_code, translation in translations.items():
+            try:
+                execute_query(insert_query, (
+                    company_id, 
+                    translation["question"], 
+                    translation["answer"], 
+                    lang_code, 
+                    current_time, 
+                    current_time
+                ))
+            except Exception as e:
+                print(f"{lang_code}版FAQ保存エラー: {e}")
+                continue
+        
+        # エンベディングを再生成
+        create_embeddings(company_id)
+        
+        translation_count = len(translations)
+        message = f"FAQが追加されました。（日本語 + {translation_count}言語の翻訳版）"
+        return True, message
+        
+    except Exception as e:
+        return False, f"FAQ追加エラー: {str(e)}"
+
 def add_faq(question, answer, company_id):
     """
-    FAQを追加する
+    FAQを追加する（従来版・後方互換性のため）
     
     Args:
         question (str): 質問
@@ -371,16 +506,28 @@ def faq_management_page():
     with tab2:
         st.subheader("新しいFAQを追加")
         
+        # 多言語翻訳オプション
+        enable_translation = st.checkbox(
+            "多言語翻訳を有効にする（英語・韓国語・中国語・台湾語）", 
+            value=True,
+            help="チェックすると、追加したFAQを自動的に英語・韓国語・中国語・台湾語に翻訳してDBに保存します"
+        )
+        
         with st.form(key="add_faq_form"):
-            new_question = st.text_area("質問")
-            new_answer = st.text_area("回答")
+            new_question = st.text_area("質問（日本語）")
+            new_answer = st.text_area("回答（日本語）")
             submit = st.form_submit_button("追加")
             
             if submit:
-                success, message = add_faq(new_question, new_answer, company_id)
+                if enable_translation:
+                    with st.spinner("FAQ追加中...（多言語翻訳処理を含む）"):
+                        success, message = add_faq_with_translations(new_question, new_answer, company_id)
+                else:
+                    success, message = add_faq(new_question, new_answer, company_id)
+                
                 if success:
                     st.success(message)
-                    time.sleep(1)  # 成功メッセージを表示する時間を確保
+                    time.sleep(2)  # 成功メッセージを表示する時間を確保
                     # フォームをクリア
                     st.rerun()
                 else:

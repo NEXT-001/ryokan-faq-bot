@@ -9,7 +9,7 @@ import numpy as np
 import hashlib
 import time
 from datetime import datetime
-from utils.constants import COMPANIES_DIR, get_company_folder_path
+from config.unified_config import UnifiedConfig
 
 def get_existing_company_ids():
     """既存の会社IDリストを取得（複数ソースから）"""
@@ -18,7 +18,7 @@ def get_existing_company_ids():
     try:
         # 1. SQLiteデータベースから取得
         import sqlite3
-        from utils.constants import DB_NAME
+        DB_NAME = UnifiedConfig.DB_NAME
         
         if os.path.exists(DB_NAME):
             conn = sqlite3.connect(DB_NAME)
@@ -58,9 +58,9 @@ def get_existing_company_ids():
     
     try:
         # 3. companiesフォルダから取得
-        if os.path.exists(COMPANIES_DIR):
-            folder_ids = [name for name in os.listdir(COMPANIES_DIR) 
-                         if os.path.isdir(os.path.join(COMPANIES_DIR, name))]
+        if os.path.exists(UnifiedConfig.COMPANIES_DIR):
+            folder_ids = [name for name in os.listdir(UnifiedConfig.COMPANIES_DIR) 
+                         if os.path.isdir(os.path.join(UnifiedConfig.COMPANIES_DIR, name))]
             existing_ids.extend(folder_ids)
             print(f"[EXISTING IDS] companiesフォルダから取得: {folder_ids}")
     except Exception as e:

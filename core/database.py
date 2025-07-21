@@ -7,7 +7,7 @@ import os
 import threading
 from contextlib import contextmanager
 from datetime import datetime
-from utils.constants import get_data_path, DB_NAME
+from config.unified_config import UnifiedConfig
 from utils.auth_utils import hash_password
 
 # スレッドローカルストレージ
@@ -15,8 +15,8 @@ _local = threading.local()
 
 def get_db_path():
     """データベースファイルのパスを取得"""
-    base_dir = get_data_path()
-    return os.path.join(base_dir, DB_NAME)
+    base_dir = UnifiedConfig.get_data_path()
+    return os.path.join(base_dir, UnifiedConfig.DB_NAME)
 
 def get_db_connection():
     """データベース接続を取得（スレッドセーフ）"""

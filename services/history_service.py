@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import os
-from config.settings import get_data_path
+from config.unified_config import UnifiedConfig
 from core.database import (
     save_search_history_to_db, 
     get_search_history_from_db, 

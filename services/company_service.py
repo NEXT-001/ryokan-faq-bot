@@ -6,7 +6,7 @@ import os
 import json
 import pandas as pd
 from datetime import datetime
-from utils.constants import get_data_path
+from config.unified_config import UnifiedConfig
 from utils.auth_utils import hash_password
 from core.database import (
     save_company_to_db, get_company_from_db, save_company_admin_to_db,

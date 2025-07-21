@@ -15,7 +15,7 @@ project_root = os.path.dirname(script_dir)
 sys.path.insert(0, project_root)
 
 from core.database import save_search_history_to_db, get_search_history_from_db, cleanup_old_search_history
-from config.settings import get_data_path
+from config.unified_config import UnifiedConfig
 
 def migrate_csv_to_db(company_id="demo-company"):
     """
@@ -27,7 +27,7 @@ def migrate_csv_to_db(company_id="demo-company"):
     print(f"[MIGRATION] 検索履歴移行開始: {company_id}")
     
     # CSVファイルのパス
-    csv_path = os.path.join(get_data_path(), "companies", company_id, "history.csv")
+    csv_path = os.path.join(UnifiedConfig.get_data_path(company_id), "history.csv")
     
     if not os.path.exists(csv_path):
         print(f"[MIGRATION] CSVファイルが見つかりません: {csv_path}")
@@ -129,7 +129,7 @@ def verify_migration(company_id="demo-company"):
 
 def migrate_all_companies():
     """全会社の検索履歴を移行"""
-    companies_dir = os.path.join(get_data_path(), "companies")
+    companies_dir = UnifiedConfig.COMPANIES_DIR
     
     if not os.path.exists(companies_dir):
         print("[MIGRATION] companiesディレクトリが見つかりません")
