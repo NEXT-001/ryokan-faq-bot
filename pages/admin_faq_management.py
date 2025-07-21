@@ -9,7 +9,7 @@ from datetime import datetime
 import time
 import openai
 from dotenv import load_dotenv
-from services.embedding_service import create_embeddings
+from services.embedding_service import create_embeddings, create_embeddings_for_specific_faqs
 from services.login_service import get_current_company_id
 from config.unified_config import UnifiedConfig
 from core.database import execute_query, fetch_dict, fetch_dict_one
@@ -187,12 +187,21 @@ def add_faq_with_translations(question, answer, company_id):
         
         current_time = datetime.now().isoformat()
         
+        # 追加されたFAQのIDを記録
+        added_faq_ids = []
+        
         # 日本語版FAQを追加
         insert_query = """
             INSERT INTO faq_data (company_id, question, answer, language, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
         """
         execute_query(insert_query, (company_id, question, answer, "ja", current_time, current_time))
+        
+        # 最後に挿入されたIDを取得
+        last_id_query = "SELECT last_insert_rowid() as id"
+        result = fetch_dict_one(last_id_query)
+        if result:
+            added_faq_ids.append(result['id'])
         
         # 翻訳版FAQを追加
         for lang_code, translation in translations.items():
@@ -205,12 +214,19 @@ def add_faq_with_translations(question, answer, company_id):
                     current_time, 
                     current_time
                 ))
+                
+                # 翻訳版のIDも記録
+                result = fetch_dict_one(last_id_query)
+                if result:
+                    added_faq_ids.append(result['id'])
+                    
             except Exception as e:
                 print(f"{lang_code}版FAQ保存エラー: {e}")
                 continue
         
-        # エンベディングを再生成
-        create_embeddings(company_id)
+        # 新規追加されたFAQのみエンベディングを生成
+        if added_faq_ids:
+            create_embeddings_for_specific_faqs(company_id, added_faq_ids, show_progress=True)
         
         translation_count = len(translations)
         message = f"FAQが追加されました。（日本語 + {translation_count}言語の翻訳版）"
@@ -249,9 +265,12 @@ def add_faq(question, answer, company_id):
         current_time = datetime.now().isoformat()
         execute_query(insert_query, (company_id, question, answer, current_time, current_time))
         
-        # エンベディングを更新
-        with st.spinner("エンベディングを生成中..."):
-            create_embeddings(company_id)
+        # 最後に挿入されたIDを取得してエンベディング生成
+        last_id_query = "SELECT last_insert_rowid() as id"
+        result = fetch_dict_one(last_id_query)
+        if result:
+            with st.spinner("エンベディングを生成中..."):
+                create_embeddings_for_specific_faqs(company_id, [result['id']], show_progress=True)
         
         return True, "FAQを追加しました。"
         
@@ -388,12 +407,22 @@ def import_faq_from_csv(uploaded_file, company_id):
             """
             current_time = datetime.now().isoformat()
             
+            # 追加されたFAQのIDを記録
+            added_faq_ids = []
+            
             for question, answer in new_entries:
                 execute_query(insert_query, (company_id, question, answer, current_time, current_time))
+                
+                # 最後に挿入されたIDを取得
+                last_id_query = "SELECT last_insert_rowid() as id"
+                result = fetch_dict_one(last_id_query)
+                if result:
+                    added_faq_ids.append(result['id'])
             
-            # エンベディングを更新
-            with st.spinner("エンベディングを生成中..."):
-                create_embeddings(company_id)
+            # 新規追加されたFAQのみエンベディングを生成
+            if added_faq_ids:
+                with st.spinner("エンベディングを生成中..."):
+                    create_embeddings_for_specific_faqs(company_id, added_faq_ids, show_progress=True)
         
         # 結果メッセージを作成
         message = f"{len(new_entries)}件のFAQを追加しました。"
