@@ -156,6 +156,95 @@ def get_embedding(text, client=None):
     print(f"リトライ回数（{MAX_RETRIES}回）を超えました。テストモードのエンベディングを返します。")
     return get_test_embedding(text)
 
+def create_embeddings_for_specific_faqs(company_id, faq_ids, show_progress=True):
+    """
+    指定されたFAQのみエンベディングを作成・更新する
+    
+    Args:
+        company_id (str): 会社ID
+        faq_ids (list): エンベディングを作成するFAQのIDリスト
+        show_progress (bool): Streamlitで進行状況を表示するかどうか
+    """
+    from core.database import execute_query, fetch_dict
+    
+    if not faq_ids:
+        return True
+    
+    try:
+        # 指定されたFAQのみを取得
+        placeholders = ','.join(['?' for _ in faq_ids])
+        query = f"""
+            SELECT id, company_id, question, answer, language, created_at, updated_at
+            FROM faq_data 
+            WHERE company_id = ? AND id IN ({placeholders})
+        """
+        params = [company_id] + faq_ids
+        faq_data = fetch_dict(query, params)
+        
+        if not faq_data:
+            print(f"指定されたFAQが見つかりません: {faq_ids}")
+            return False
+        
+        print(f"指定されたFAQ {len(faq_data)}件のエンベディングを生成中...")
+        if show_progress:
+            st.info(f"新規追加された{len(faq_data)}件のFAQのエンベディングを生成中...")
+        
+        # VoyageAI APIクライアント初期化
+        client = load_voyage_client()
+        if not client:
+            error_msg = "VoyageAI APIクライアントの初期化に失敗しました"
+            print(error_msg)
+            if show_progress:
+                st.error(error_msg)
+            return False
+        
+        # 進行状況バー
+        if show_progress:
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+        
+        # 各FAQのエンベディングを生成
+        for i, faq in enumerate(faq_data):
+            try:
+                if show_progress:
+                    progress = (i + 1) / len(faq_data)
+                    progress_bar.progress(progress)
+                    status_text.text(f"エンベディング生成中... ({i+1}/{len(faq_data)})")
+                
+                # エンベディング生成
+                embedding = get_embedding(faq['question'])
+                if embedding is None:
+                    print(f"エンベディング生成失敗: ID {faq['id']}")
+                    continue
+                
+                # DBに保存
+                serialized_embedding = serialize_embedding(embedding)
+                update_query = """
+                    UPDATE faq_data 
+                    SET embedding = ? 
+                    WHERE id = ?
+                """
+                execute_query(update_query, (serialized_embedding, faq['id']))
+                
+            except Exception as e:
+                print(f"FAQ ID {faq['id']} のエンベディング生成エラー: {e}")
+                continue
+        
+        if show_progress:
+            progress_bar.progress(1.0)
+            status_text.text("エンベディング生成完了")
+            st.success(f"新規追加された{len(faq_data)}件のFAQのエンベディングが完了しました")
+        
+        print(f"指定されたFAQのエンベディング生成完了: {len(faq_data)}件")
+        return True
+        
+    except Exception as e:
+        error_msg = f"エンベディング生成エラー: {e}"
+        print(error_msg)
+        if show_progress:
+            st.error(error_msg)
+        return False
+
 def create_embeddings(company_id, show_progress=True):
     """
     指定された会社のFAQデータにエンベディングを追加してDBに保存する
