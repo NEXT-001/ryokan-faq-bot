@@ -14,9 +14,49 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def detect_language(text):
+    """
+    改善された言語判定（日本語の漢字を韓国語と誤判定しないよう対策）
+    """
     try:
-        return detect(text)
-    except:
+        # 短いテキストや漢字のみの場合の特別処理
+        if len(text.strip()) <= 3:
+            # 短すぎる場合はデフォルトで日本語とする
+            return "ja"
+        
+        # 日本語特有の文字（ひらがな、カタカナ）をチェック
+        has_hiragana = bool(re.search(r'[あ-ん]', text))
+        has_katakana = bool(re.search(r'[ア-ン]', text))
+        
+        if has_hiragana or has_katakana:
+            # ひらがなまたはカタカナが含まれていれば確実に日本語
+            return "ja"
+        
+        # 日本語でよく使われる漢字の組み合わせパターン
+        japanese_patterns = [
+            r'観光', r'旅行', r'温泉', r'神社', r'寺院', r'公園', r'美術館', r'博物館',
+            r'レストラン', r'食事', r'グルメ', r'料理', r'おすすめ', r'人気',
+            r'チェックイン', r'チェックアウト', r'予約', r'宿泊'
+        ]
+        
+        for pattern in japanese_patterns:
+            if re.search(pattern, text):
+                return "ja"
+        
+        # langdetectを使用するが、結果を検証
+        detected = detect(text)
+        
+        # 漢字のみで韓国語と判定された場合は日本語に修正
+        has_chinese_chars = bool(re.search(r'[一-龯]', text))
+        has_korean_chars = bool(re.search(r'[가-힣]', text))
+        
+        if detected == "ko" and has_chinese_chars and not has_korean_chars:
+            # 漢字があるが韓国文字がない場合は日本語とする
+            return "ja"
+        
+        return detected
+        
+    except Exception as e:
+        print(f"[LANGUAGE_DETECT] 言語判定エラー: {e}")
         return "ja"
 
 def add_links_to_tourist_spots(text):
@@ -213,13 +253,6 @@ def generate_multiple_tourism_links(city_name, lang):
     rakuten_url = f"https://travel.rakuten.co.jp/guide/{urllib.parse.quote(city_name)}/"
     links.append({"name": "🌸 観光ガイド（楽天トラベル）", "photo": None, "map_url": rakuten_url})
     
-    # 3. るるぶ&more
-    rurubu_url = f"https://rurubu.jp/andmore/search?keyword={urllib.parse.quote(city_name)}"
-    links.append({"name": "📖 観光情報（るるぶ）", "photo": None, "map_url": rurubu_url})
-    
-    # 4. トリップアドバイザー
-    tripadvisor_url = f"https://www.tripadvisor.jp/Search?q={urllib.parse.quote(city_name)}"
-    links.append({"name": "✈️ 観光スポット（トリップアドバイザー）", "photo": None, "map_url": tripadvisor_url})
     
     return links
 

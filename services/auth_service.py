@@ -39,7 +39,7 @@ class AuthService:
             tuple: (成功したかどうか, メッセージ)
         """
         # テストモードの場合はスーパー管理者ログイン
-        from config.settings import is_test_mode
+        from config.unified_config import UnifiedConfig
         if UnifiedConfig.is_test_mode() and company_id == "admin" and username == "admin" and password == "admin":
             AuthService._set_session_data(
                 is_logged_in=True,
@@ -110,7 +110,7 @@ class AuthService:
             return False, f"認証エラー: {e}", None, None, None, None
 
     @staticmethod
-    def register_user(company_name, name, email, password):
+    def register_user(company_name, name, email, password, location_info=None):
         """
         ユーザーを仮登録
         
@@ -119,6 +119,7 @@ class AuthService:
             name (str): ユーザー名
             email (str): メールアドレス
             password (str): パスワード
+            location_info (dict): 住所情報（postal_code, prefecture, city, address）
             
         Returns:
             bool: 登録成功したかどうか
@@ -166,7 +167,7 @@ class AuthService:
             conn.close()
             
             # 4. 会社フォルダ構造を作成
-            folder_success = create_company_folder_structure(company_id, company_name, password, email)
+            folder_success = create_company_folder_structure(company_id, company_name, password, email, location_info)
             if not folder_success:
                 print(f"[AUTH_SERVICE] フォルダ構造作成失敗（登録は継続）")
             
@@ -394,9 +395,9 @@ def get_current_company_id():
     """後方互換性のためのエイリアス"""
     return AuthService.get_current_company_id()
 
-def register_user(company_name, name, email, password):
+def register_user(company_name, name, email, password, location_info=None):
     """後方互換性のためのエイリアス"""
-    return AuthService.register_user(company_name, name, email, password)
+    return AuthService.register_user(company_name, name, email, password, location_info)
 
 def verify_user_token(token):
     """後方互換性のためのエイリアス"""

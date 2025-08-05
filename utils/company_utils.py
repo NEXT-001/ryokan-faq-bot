@@ -161,7 +161,7 @@ def create_unique_company_id(base_id, existing_ids):
     return fallback_id
 
 
-def create_company_folder_structure(company_id, company_name, password, email):
+def create_company_folder_structure(company_id, company_name, password, email, location_info=None):
     """
     会社用のフォルダ構造とファイルを作成する
     
@@ -170,6 +170,7 @@ def create_company_folder_structure(company_id, company_name, password, email):
         company_name (str): 会社名
         password (str): パスワード
         email (str): メールアドレス
+        location_info (dict): 住所情報（postal_code, prefecture, city, address）
         
     Returns:
         bool: 作成成功したかどうか
@@ -265,6 +266,21 @@ def create_company_folder_structure(company_id, company_name, password, email):
         #     with open(settings_path, 'w', encoding='utf-8') as f:
         #         json.dump(settings, f, ensure_ascii=False, indent=2)
         #     print(f"[FILE CREATED] {settings_path}")
+        
+        # 5. データベースに会社情報と住所情報を保存
+        from core.database import save_company_to_db
+        db_success = save_company_to_db(
+            company_id=company_id,
+            company_name=company_name,
+            created_at=datetime.now().isoformat(),
+            faq_count=5,  # 初期FAQの数
+            location_info=location_info
+        )
+        
+        if db_success:
+            print(f"[DATABASE] 会社情報をデータベースに保存しました: {company_id}")
+        else:
+            print(f"[DATABASE WARNING] 会社情報のデータベース保存に失敗しました: {company_id}")
         
         print(f"[SUCCESS] 会社フォルダ構造を作成しました: data/companies/{company_id}")
         return True
