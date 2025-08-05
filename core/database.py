@@ -66,7 +66,13 @@ def initialize_database():
                     name TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     faq_count INTEGER DEFAULT 0,
-                    last_updated TEXT NOT NULL
+                    last_updated TEXT NOT NULL,
+                    prefecture TEXT,
+                    city TEXT,
+                    address TEXT,
+                    postal_code TEXT,
+                    phone TEXT,
+                    website TEXT
                 )
             """)
             
@@ -180,37 +186,112 @@ def init_company_tables():
     """会社関連テーブルを初期化（initialize_databaseのエイリアス）"""
     return initialize_database()
 
-def save_company_to_db(company_id, company_name, created_at, faq_count=0):
-    """会社情報をデータベースに保存"""
+def save_company_to_db(company_id, company_name, created_at, faq_count=0, location_info=None):
+    """会社情報をデータベースに保存（所在地情報対応）"""
     try:
         if created_at is None:
             created_at = datetime.now().isoformat()
         
         last_updated = datetime.now().isoformat()
         
+        # 位置情報のデフォルト値
+        if location_info is None:
+            location_info = {}
+        
+        prefecture = location_info.get('prefecture')
+        city = location_info.get('city')
+        address = location_info.get('address')
+        postal_code = location_info.get('postal_code')
+        phone = location_info.get('phone')
+        website = location_info.get('website')
+        
         # 既存の会社が存在するかチェック
         if company_exists_in_db(company_id):
             # 既存の会社情報を更新（FAQデータを保持）
             query = """
                 UPDATE companies 
-                SET name = ?, last_updated = ?
+                SET name = ?, last_updated = ?, prefecture = ?, city = ?, 
+                    address = ?, postal_code = ?, phone = ?, website = ?
                 WHERE id = ?
             """
-            execute_query(query, (company_name, last_updated, company_id))
+            execute_query(query, (company_name, last_updated, prefecture, city, 
+                                address, postal_code, phone, website, company_id))
             print(f"[DATABASE] 会社更新完了: {company_id}")
         else:
             # 新しい会社を作成
             query = """
-                INSERT INTO companies (id, name, created_at, faq_count, last_updated)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO companies (id, name, created_at, faq_count, last_updated,
+                                     prefecture, city, address, postal_code, phone, website)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
-            execute_query(query, (company_id, company_name, created_at, faq_count, last_updated))
+            execute_query(query, (company_id, company_name, created_at, faq_count, last_updated,
+                                prefecture, city, address, postal_code, phone, website))
             print(f"[DATABASE] 会社作成完了: {company_id}")
         
         return True
         
     except Exception as e:
         print(f"[DATABASE] 会社保存エラー: {e}")
+        return False
+
+
+def get_company_location(company_id):
+    """会社の所在地情報を取得"""
+    try:
+        with get_cursor() as cursor:
+            cursor.execute("""
+                SELECT prefecture, city, address, postal_code, phone, website
+                FROM companies WHERE id = ?
+            """, (company_id,))
+            result = cursor.fetchone()
+            
+            if result:
+                return {
+                    'prefecture': result['prefecture'],
+                    'city': result['city'],
+                    'address': result['address'],
+                    'postal_code': result['postal_code'],
+                    'phone': result['phone'],
+                    'website': result['website']
+                }
+            return None
+            
+    except Exception as e:
+        print(f"[DATABASE] 会社所在地取得エラー: {e}")
+        return None
+
+
+def update_company_location(company_id, location_info):
+    """会社の所在地情報を更新"""
+    try:
+        last_updated = datetime.now().isoformat()
+        
+        with get_cursor() as cursor:
+            cursor.execute("""
+                UPDATE companies 
+                SET prefecture = ?, city = ?, address = ?, postal_code = ?, 
+                    phone = ?, website = ?, last_updated = ?
+                WHERE id = ?
+            """, (
+                location_info.get('prefecture'),
+                location_info.get('city'),
+                location_info.get('address'),
+                location_info.get('postal_code'),
+                location_info.get('phone'),
+                location_info.get('website'),
+                last_updated,
+                company_id
+            ))
+            
+            if cursor.rowcount > 0:
+                print(f"[DATABASE] 会社所在地更新完了: {company_id}")
+                return True
+            else:
+                print(f"[DATABASE] 会社が見つかりません: {company_id}")
+                return False
+                
+    except Exception as e:
+        print(f"[DATABASE] 会社所在地更新エラー: {e}")
         return False
 
 def get_company_from_db(company_id):
@@ -225,7 +306,13 @@ def get_company_from_db(company_id):
                 "company_name": result["name"],
                 "created_at": result["created_at"],
                 "faq_count": result["faq_count"],
-                "last_updated": result["last_updated"]
+                "last_updated": result["last_updated"],
+                "prefecture": result["prefecture"],
+                "city": result["city"],
+                "address": result["address"],
+                "postal_code": result["postal_code"],
+                "phone": result["phone"],
+                "website": result["website"]
             }
         return None
         

@@ -99,8 +99,8 @@ def load_faq_data(company_id):
         pd.DataFrame: FAQデータフレーム
     """
     try:
-        # データベースからFAQデータを取得
-        query = "SELECT question, answer FROM faq_data WHERE company_id = ? ORDER BY created_at"
+        # データベースからFAQデータを取得（新しいものが上に表示されるようにDESC順）
+        query = "SELECT question, answer FROM faq_data WHERE company_id = ? ORDER BY created_at DESC"
         results = fetch_dict(query, (company_id,))
         
         if results:
@@ -295,8 +295,8 @@ def update_faq(index, question, answer, company_id):
         return False, "質問と回答を入力してください。"
     
     try:
-        # 指定されたインデックスのFAQ IDを取得
-        query = "SELECT id FROM faq_data WHERE company_id = ? ORDER BY created_at LIMIT 1 OFFSET ?"
+        # 指定されたインデックスのFAQ IDを取得（新しいものから順番）
+        query = "SELECT id FROM faq_data WHERE company_id = ? ORDER BY created_at DESC LIMIT 1 OFFSET ?"
         result = fetch_dict_one(query, (company_id, index))
         
         if not result:
@@ -335,8 +335,8 @@ def delete_faq(index, company_id):
         tuple: (成功したかどうか, メッセージ)
     """
     try:
-        # 指定されたインデックスのFAQ IDを取得
-        query = "SELECT id FROM faq_data WHERE company_id = ? ORDER BY created_at LIMIT 1 OFFSET ?"
+        # 指定されたインデックスのFAQ IDを取得（新しいものから順番）
+        query = "SELECT id FROM faq_data WHERE company_id = ? ORDER BY created_at DESC LIMIT 1 OFFSET ?"
         result = fetch_dict_one(query, (company_id, index))
         
         if not result:
@@ -348,9 +348,7 @@ def delete_faq(index, company_id):
         delete_query = "DELETE FROM faq_data WHERE id = ?"
         execute_query(delete_query, (faq_id,))
         
-        # エンベディングを更新
-        with st.spinner("エンベディングを生成中..."):
-            create_embeddings(company_id)
+        # エンベディングの更新は不要（削除時は該当のエンベディングのみ削除される）
         
         return True, "FAQを削除しました。"
         

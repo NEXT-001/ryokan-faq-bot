@@ -4,21 +4,46 @@ Stripe APIを使用した決済機能を提供
 """
 
 import streamlit as st
-import stripe
 import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 import logging
 
+# Stripe SDK（オプション）
+try:
+    import stripe
+    stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+    HAS_STRIPE_SDK = True
+except ImportError:
+    print("Stripe SDKがインストールされていません。決済機能は無効化されます。")
+    # ダミークラスを作成
+    class stripe:
+        class PaymentMethod:
+            pass
+        class Customer:
+            pass
+        class Price:
+            pass
+        class Subscription:
+            pass
+        class Invoice:
+            pass
+        class error:
+            class CardError(Exception):
+                pass
+    HAS_STRIPE_SDK = False
+
 # ロギング設定
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Stripe設定
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
-
 class PaymentService:
     """決済サービスクラス"""
+    
+    def _check_stripe_available(self):
+        """Stripe SDK利用可能性チェック"""
+        if not HAS_STRIPE_SDK:
+            raise ImportError("Stripe SDKが利用できません。決済機能を使用するには 'pip install stripe' を実行してください。")
     
     # プラン定義
     PLANS = {

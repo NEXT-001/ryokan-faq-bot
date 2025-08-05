@@ -16,6 +16,7 @@ from services.embedding_service import get_embedding
 from services.line_service import send_line_message  # LINE送信機能をインポート
 from services.faq_migration import get_faq_data_from_db, init_faq_migration
 from services.tourism_service import detect_language, generate_tourism_response_by_city
+from services.translation_service import TranslationService
 
 # 環境変数読み込み
 load_dotenv()
@@ -164,6 +165,16 @@ def get_response(user_input, company_id=None, user_info=""):
         
         user_lang = detect_language(user_input)
         print(f"質問した言語: {user_lang}")
+        
+        # 外国語の質問の場合は回答を翻訳
+        if user_lang != 'ja':
+            translation_service = TranslationService()
+            # 詳細情報リンクは日本語のまま保持し、説明文のみ翻訳
+            translated_answer = translation_service.translate_text(answer, user_lang, 'ja')
+            # リンク部分は日本語のまま保持するため、元の回答と翻訳された回答を適切に結合
+            answer = _preserve_japanese_links_in_translation(answer, translated_answer)
+            print(f"回答を{user_lang}に翻訳しました")
+        
         # 類似度スコアが低すぎる場合
         if similarity_score < SIMILARITY_THRESHOLD:
             # # 非常に低い類似度の場合
@@ -181,12 +192,18 @@ def get_response(user_input, company_id=None, user_info=""):
             if _is_restaurant_query(user_input):
                 answer = _generate_gnavi_response(user_input, user_lang)
             else:
-                answer = (
-                    "申し訳ございません。その質問については担当者に確認する必要があります。"
-                    "しばらくお待ちいただけますでしょうか。\n\n"
-                    "I apologize, but I need to check with our staff regarding that question. "
-                    "Could you please wait a moment?"
-                )
+                # エラーメッセージも言語に応じて翻訳
+                if user_lang == 'en':
+                    answer = "I apologize, but I need to check with our staff regarding that question. Could you please wait a moment?"
+                elif user_lang == 'ko':
+                    answer = "죄송합니다. 해당 질문에 대해서는 담당자에게 확인이 필요합니다. 잠시만 기다려 주시겠어요?"
+                elif user_lang == 'zh':
+                    answer = "很抱歉，关于这个问题需要与工作人员确认。请稍等片刻。"
+                else:
+                    answer = (
+                        "申し訳ございません。その質問については担当者に確認する必要があります。"
+                        "しばらくお待ちいただけますでしょうか。"
+                    )
 
         return answer, len(user_input.split()), len(answer.split())
     
@@ -207,6 +224,44 @@ def get_response(user_input, company_id=None, user_info=""):
             print(f"LINE通知エラー: {line_error}")
         
         return error_message, 0, 0
+
+
+def _preserve_japanese_links_in_translation(original_text: str, translated_text: str) -> str:
+    """
+    翻訳された回答の中で、日本語の詳細情報リンクを保持する
+    
+    Args:
+        original_text: 元の日本語回答
+        translated_text: 翻訳された回答
+        
+    Returns:
+        str: 日本語リンクが保持された翻訳済み回答
+    """
+    import re
+    
+    # 詳細情報リンクのパターンを抽出
+    link_patterns = [
+        r'📍\s*詳細情報[：:][^】]*',
+        r'🗾\s*観光情報[（\(][^）\)]*[）\)]',
+        r'🗺️\s*地図情報[（\(][^）\)]*[）\)]',
+        r'📖\s*[^（\(]*[（\(][^）\)]*[）\)]',
+        r'🍽️\s*[^（\(]*[（\(][^）\)]*[）\)]'
+    ]
+    
+    # 元のテキストから日本語リンクを抽出
+    japanese_links = []
+    for pattern in link_patterns:
+        matches = re.findall(pattern, original_text)
+        japanese_links.extend(matches)
+    
+    # 翻訳されたテキストの末尾に日本語の詳細情報を追加
+    if japanese_links and '📍' not in translated_text:
+        translated_text += "\n\n📍 詳細情報:\n"
+        for link in japanese_links:
+            if link not in translated_text:
+                translated_text += f"• {link}\n"
+    
+    return translated_text
 
 
 def _is_restaurant_query(query: str) -> bool:
