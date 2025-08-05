@@ -21,9 +21,9 @@ def init_db():
     """データベースを初期化（プロキシ）"""
     return initialize_database()
 
-def register_user(company_name, name, email, password):
+def register_user(company_name, name, email, password, location_info=None):
     """ユーザーを仮登録（プロキシ）"""
-    return AuthService.register_user(company_name, name, email, password)
+    return AuthService.register_user(company_name, name, email, password, location_info)
 
 def verify_user_token(token):
     """メール認証トークンを検証（プロキシ）"""
