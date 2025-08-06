@@ -91,57 +91,64 @@ def user_page(company_id):
     st.caption("💡 FAQ、観光情報、グルメ情報をまとめてお答えします")
     
     if user_input:
-        with st.spinner("回答を生成中...（FAQ・観光・グルメ情報を統合）"):
-            try:
-                # 統合チャットサービスを初期化
-                unified_chat = UnifiedChatService()
+        # st.spinnerを削除してDOM競合を回避
+        status_placeholder = st.empty()
+        status_placeholder.info("回答を生成中...（FAQ・観光・グルメ情報を統合）")
+        
+        try:
+            # 統合チャットサービスを初期化
+            unified_chat = UnifiedChatService()
+            
+            # 位置情報コンテキスト準備
+            location_context = {
+                'manual_location': city_name,
+                'gps_coords': None  # GPS使用は停止
+            }
+            
+            # 統合レスポンス取得
+            unified_result = unified_chat.get_unified_response(
+                user_input, 
+                company_id, 
+                user_info,
+                location_context
+            )
+            
+            # 処理完了後、状態表示をクリア
+            status_placeholder.empty()
+            
+            # 履歴記録
+            log_interaction(
+                question=user_input,
+                answer=unified_result["answer"],
+                input_tokens=0,  # 統合サービスでトークン数を管理
+                output_tokens=0,
+                company_id=company_id,
+                user_info=user_info
+            )
+            
+            # 会話履歴に追加
+            st.session_state.conversation_history.append({
+                "user_info": user_info,
+                "question": user_input, 
+                "answer": unified_result["answer"],
+                "response_type": unified_result["response_type"],
+                "confidence_score": unified_result["confidence_score"],
+                "needs_human_support": unified_result["needs_human_support"]
+            })
+            
+            # 人間サポートが必要な場合の表示
+            if unified_result["needs_human_support"]:
+                st.info("📞 担当者に通知いたしました。詳しい回答をお待ちください。")
                 
-                # 位置情報コンテキスト準備
-                location_context = {
-                    'manual_location': city_name,
-                    'gps_coords': None  # GPS使用は停止
-                }
-                
-                # 統合レスポンス取得
-                unified_result = unified_chat.get_unified_response(
-                    user_input, 
-                    company_id, 
-                    user_info,
-                    location_context
-                )
-                
-                # 履歴記録
-                log_interaction(
-                    question=user_input,
-                    answer=unified_result["answer"],
-                    input_tokens=0,  # 統合サービスでトークン数を管理
-                    output_tokens=0,
-                    company_id=company_id,
-                    user_info=user_info
-                )
-                
-                # 会話履歴に追加
-                st.session_state.conversation_history.append({
-                    "user_info": user_info,
-                    "question": user_input, 
-                    "answer": unified_result["answer"],
-                    "response_type": unified_result["response_type"],
-                    "confidence_score": unified_result["confidence_score"],
-                    "needs_human_support": unified_result["needs_human_support"]
-                })
-                
-                # 人間サポートが必要な場合の表示
-                if unified_result["needs_human_support"]:
-                    st.info("📞 担当者に通知いたしました。詳しい回答をお待ちください。")
-                    
-            except Exception as e:
-                st.error(f"エラーが発生しました: {str(e)}")
-                st.session_state.conversation_history.append({
-                    "user_info": user_info,
-                    "question": user_input, 
-                    "answer": "申し訳ございません。現在システムに問題が発生しております。しばらくお待ちください。",
-                    "response_type": "error"
-                })
+        except Exception as e:
+            status_placeholder.empty()  # エラー時も状態表示をクリア
+            st.error(f"エラーが発生しました: {str(e)}")
+            st.session_state.conversation_history.append({
+                "user_info": user_info,
+                "question": user_input, 
+                "answer": "申し訳ございません。現在システムに問題が発生しております。しばらくお待ちください。",
+                "response_type": "error"
+            })
 
     # 会話履歴の表示（新しいものから上に表示）
     if st.session_state.conversation_history:
