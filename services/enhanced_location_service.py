@@ -142,6 +142,14 @@ class EnhancedLocationService:
                 'english':'Asahikawa',
                 'alias':['Asahikawa','아사히카와','旭川','旭川']},
 
+            # 東北地域
+            '仙台': {'city':'仙台市','prefecture':'宮城県','region':'東北','type':'city',
+                'english':'Sendai',
+                'alias':['Sendai','센다이','仙台','仙台']},
+            '松島': {'city':'松島町','prefecture':'宮城県','region':'東北','type':'area',
+                'english':'Matsushima',
+                'alias':['Matsushima','마츠시마','松岛','松島']},
+
             # 九州・大分県
             '福岡': {'city':'福岡市','prefecture':'福岡県','region':'九州','type':'city',
                 'english':'Fukuoka',
@@ -155,6 +163,9 @@ class EnhancedLocationService:
             '熊本': {'city':'熊本市','prefecture':'熊本県','region':'九州','type':'city',
                 'english':'Kumamoto',
                 'alias':['Kumamoto','쿠마모토','熊本','熊本']},
+            '阿蘇': {'city':'阿蘇市','prefecture':'熊本県','region':'九州','type':'area',
+                'english':'Aso',
+                'alias':['Aso','아소','阿苏','阿蘇']},
             '長崎': {'city':'長崎市','prefecture':'長崎県','region':'九州','type':'city',
                 'english':'Nagasaki',
                 'alias':['Nagasaki','나가사키','长崎','長崎']},
@@ -187,6 +198,18 @@ class EnhancedLocationService:
             '白川郷': {'city':'白川村','prefecture':'岐阜県','region':'中部','type':'area',
                 'english':'Shirakawago',
                 'alias':['Shirakawa-go','Shirakawago','시라카와고','白川乡','白川鄉']},
+            
+            '新倉山浅間公園': {'city':'富士吉田市','prefecture':'山梨県','region':'中部','type':'area',
+                'english':'Arakurayama Sengen Park',
+                'alias':['Arakurayama Sengen Park','Chureito Pagoda','新倉山浅間公園','忠霊塔','아라쿠라야마','아라쿠라 산']},
+
+            '富士河口湖': {'city':'富士河口湖町','prefecture':'山梨県','region':'中部','type':'lake',
+                'english':'Lake Kawaguchi',
+                'alias':['Lake Kawaguchi','Kawaguchiko','河口湖','카와구치코','카와구치호']},
+
+            '富士本栖湖': {'city':'富士河口湖町 / 富士宮市','prefecture':'山梨県 / 静岡県','region':'中部','type':'lake',
+                'english':'Lake Motosu',
+                'alias':['Lake Motosu','Motosuko','本栖湖','모토스코','모토스호']},
             # 必要な項目は以上で約60箇所です。
         }
         normalized_locations.update({
