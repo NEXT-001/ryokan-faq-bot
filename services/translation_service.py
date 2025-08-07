@@ -5,11 +5,15 @@ services/translation_service.py
 Google Cloud TranslationまたはAnthropicを使用した翻訳機能
 """
 import os
+<<<<<<< HEAD
 import re
+=======
+>>>>>>> origin/main
 from typing import Dict, List, Optional, Tuple
 import anthropic
 from dotenv import load_dotenv
 
+<<<<<<< HEAD
 # 動的インポートをモジュールレベルに移動（パフォーマンス改善）
 try:
     from services.enhanced_language_detection import enhanced_detect_language_with_confidence
@@ -17,6 +21,8 @@ try:
 except ImportError:
     ENHANCED_DETECTION_AVAILABLE = False
 
+=======
+>>>>>>> origin/main
 # Google Cloud Translation V2のインポート
 try:
     from google.cloud import translate_v2 as translate

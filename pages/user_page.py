@@ -55,6 +55,7 @@ def user_page(company_id):
     if st.button("会話履歴をクリア"):
         st.session_state.conversation_history = []
         st.session_state.current_language = None  # 言語状態もリセット（初回検出を強制）
+
         # ウィジェットのキーは直接クリアせず、rerunで対応
         st.success("会話履歴をクリアしました！")
         st.rerun()
