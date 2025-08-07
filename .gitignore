@@ -31,3 +31,4 @@ data/companies/*/faq_with_embeddings.pkl
 
 # 設定ファイル
 #/data/*.db
+*.json

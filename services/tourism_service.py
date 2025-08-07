@@ -9,13 +9,33 @@ from dotenv import load_dotenv
 # .env を読み込む
 load_dotenv()
 
+# 翻訳サービスのインポート
+try:
+    from services.translation_service import TranslationService
+    TRANSLATION_SERVICE_AVAILABLE = True
+except ImportError:
+    print("[TOURISM_SERVICE] 翻訳サービスが利用できません")
+    TRANSLATION_SERVICE_AVAILABLE = False
+
 # 環境変数から API キーを取得
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def detect_language(text):
     """
-    改善された言語判定（日本語の漢字を韓国語と誤判定しないよう対策）
+    言語判定（強化版へのブリッジ関数）
+    """
+    try:
+        # 強化言語検出を優先使用
+        from services.enhanced_language_detection import enhanced_detect_language
+        return enhanced_detect_language(text)
+    except ImportError:
+        print("[TOURISM_SERVICE] 強化言語検出が利用できません、フォールバック")
+        return detect_language_fallback(text)
+
+def detect_language_fallback(text):
+    """
+    フォールバック用言語判定（従来版改良、繁体字中国語サポート追加）
     """
     try:
         # 短いテキストや漢字のみの場合の特別処理
@@ -31,6 +51,23 @@ def detect_language(text):
             # ひらがなまたはカタカナが含まれていれば確実に日本語
             return "ja"
         
+        # 繁体字中国語特有の文字パターンをチェック
+        traditional_chinese_patterns = [
+            # 繁体字特有の文字
+            r'餐廳', r'資訊', r'資料', r'觀光', r'飯店', r'風景', r'歷史', r'傳統',
+            r'當地', r'營業', r'時間', r'價格', r'優質', r'評價', r'推薦', r'環境',
+            r'發展', r'經濟', r'國際', r'機場', r'車站', r'飯局', r'點心', r'風味',
+            # 台湾・香港でよく使われる表現
+            r'什麼', r'東西', r'地方', r'這邊', r'那邊', r'這裡', r'那裡',
+            # 繁体字の数字・単位
+            r'個', r'間', r'種', r'層', r'樓', r'號',
+        ]
+        
+        for pattern in traditional_chinese_patterns:
+            if re.search(pattern, text):
+                print(f"[LANGUAGE_DETECT] 繁体字パターン検出: {pattern}")
+                return "tw"  # 繁体字中国語として判定
+        
         # 日本語でよく使われる漢字の組み合わせパターン
         japanese_patterns = [
             r'観光', r'旅行', r'温泉', r'神社', r'寺院', r'公園', r'美術館', r'博物館',
@@ -44,6 +81,14 @@ def detect_language(text):
         
         # langdetectを使用するが、結果を検証
         detected = detect(text)
+        
+        # 繁体字中国語の特別処理
+        if detected == "zh-cn":
+            # 繁体字特有文字があるかさらにチェック
+            has_traditional_chars = bool(re.search(r'[餐廳資訊觀光風景歷史傳統當營業時間價格優質評價推薦環境發展經濟國際機場車站]', text))
+            if has_traditional_chars:
+                print(f"[LANGUAGE_DETECT] 簡体字判定だが繁体字文字を検出: tw に変更")
+                return "tw"
         
         # 漢字のみで韓国語と判定された場合は日本語に修正
         has_chinese_chars = bool(re.search(r'[一-龯]', text))
@@ -119,6 +164,10 @@ def generate_tourism_response_by_city(user_input, city_name, lang):
         "zh": f"你是{city_name}的旅游向导AI。请用中文礼貌回答。"
     }.get(lang, f"You are a sightseeing guide AI for {city_name}. Answer politely.")
 
+    # URL生成用にuser_inputを日本語に翻訳（必要に応じて）
+    japanese_user_input = _translate_keyword_to_japanese(user_input, lang)
+    print(f"[TOURISM_SERVICE] URL用ユーザー入力翻訳: '{user_input}' → '{japanese_user_input}'")
+
     prompt = f"""
 都市・地域: {city_name}
 入力された都市名: {city_name}
@@ -149,11 +198,12 @@ def generate_tourism_response_by_city(user_input, city_name, lang):
     # グルメと観光地の複数リンクを生成
     links = []
     
-    # ぐるなびリンク
-    links.append({"name": "🍽️ 周辺グルメ・レストラン（ぐるなび）", "photo": None, "map_url": generate_gnavi_url_by_city(city_name, "ja")})
+    # ぐるなびリンク（多言語対応）
+    gnavi_label = _get_gnavi_label(lang)
+    links.append({"name": gnavi_label, "photo": None, "map_url": generate_gnavi_url_by_city(city_name, lang)})
     
-    # 複数の観光地情報サイトリンク
-    tourism_links = generate_multiple_tourism_links(city_name, "ja")
+    # 複数の観光地情報サイトリンク（多言語対応）
+    tourism_links = generate_multiple_tourism_links(city_name, lang)
     links.extend(tourism_links)
 
     return answer_with_links, links
@@ -241,18 +291,19 @@ def generate_tourism_url_by_city(city_name, lang):
         return f"https://travel.rakuten.co.jp/guide/{urllib.parse.quote(city_name)}/"
 
 def generate_multiple_tourism_links(city_name, lang):
-    """複数の観光地情報サイトのリンクを生成"""
+    """複数の観光地情報サイトのリンクを生成（多言語対応）"""
     links = []
     
     # 1. じゃらんnet
     jalan_url = generate_tourism_url_by_city(city_name, lang)
     if "jalan.net" in jalan_url:
-        links.append({"name": "🗾 観光地情報（じゃらん）", "photo": None, "map_url": jalan_url})
+        jalan_label = _get_jalan_label(lang)
+        links.append({"name": jalan_label, "photo": None, "map_url": jalan_url})
     
     # 2. 楽天トラベル
     rakuten_url = f"https://travel.rakuten.co.jp/guide/{urllib.parse.quote(city_name)}/"
-    links.append({"name": "🌸 観光ガイド（楽天トラベル）", "photo": None, "map_url": rakuten_url})
-    
+    rakuten_label = _get_rakuten_label(lang)
+    links.append({"name": rakuten_label, "photo": None, "map_url": rakuten_url})
     
     return links
 
@@ -266,12 +317,61 @@ def _get_gnavi_label(lang):
     }
     return labels.get(lang, labels["ja"])
 
-def _get_tourism_label(lang):
-    """観光地リンクのラベルを言語別に取得"""
+def _get_jalan_label(lang):
+    """じゃらんリンクのラベルを言語別に取得"""
     labels = {
-        "ja": "🗾 周辺観光地・スポット（じゃらん）",
-        "en": "🗾 Nearby Tourist Spots (Jalan)",
-        "ko": "🗾 주변 관광지・스팟 (쟈란)",
-        "zh": "🗾 周边旅游景点 (JALAN)"
+        "ja": "🗾 観光地情報（じゃらん）",
+        "en": "🗾 Tourist Information (Jalan)",
+        "ko": "🗾 관광지 정보 (쟈란)",
+        "zh": "🗾 旅游景点信息 (JALAN)",
+        "tw": "🗾 旅遊景點資訊 (JALAN)"
     }
     return labels.get(lang, labels["ja"])
+
+def _get_rakuten_label(lang):
+    """楽天トラベルリンクのラベルを言語別に取得"""
+    labels = {
+        "ja": "🌸 観光ガイド（楽天トラベル）",
+        "en": "🌸 Travel Guide (Rakuten Travel)",
+        "ko": "🌸 관광 가이드 (라쿠텐 트래블)",
+        "zh": "🌸 旅游指南 (乐天旅行)",
+        "tw": "🌸 旅遊指南 (樂天旅遊)"
+    }
+    return labels.get(lang, labels["ja"])
+
+def _get_tourism_label(lang):
+    """観光地リンクのラベルを言語別に取得（後方互換性用）"""
+    return _get_jalan_label(lang)
+
+def _translate_keyword_to_japanese(keyword, source_language):
+    """
+    キーワードを日本語に翻訳（URL用）
+    
+    Args:
+        keyword: 翻訳対象キーワード
+        source_language: 元の言語コード
+        
+    Returns:
+        str: 日本語に翻訳されたキーワード
+    """
+    # 既に日本語の場合はそのまま返す
+    if source_language == 'ja':
+        return keyword
+    
+    # 翻訳サービスが利用できない場合はそのまま返す
+    if not TRANSLATION_SERVICE_AVAILABLE:
+        print(f"[TOURISM_SERVICE] 翻訳サービス利用不可、元のキーワードを使用: '{keyword}'")
+        return keyword
+    
+    try:
+        # 翻訳サービスのインスタンス作成
+        translation_service = TranslationService()
+        
+        # キーワードを日本語に翻訳
+        japanese_keyword = translation_service.translate_text(keyword, 'ja', source_language)
+        print(f"[TOURISM_SERVICE] キーワード翻訳: '{keyword}' ({source_language}) → '{japanese_keyword}' (ja)")
+        return japanese_keyword
+    except Exception as e:
+        print(f"[TOURISM_SERVICE] キーワード翻訳エラー: {e}")
+        # エラー時は元のキーワードを返す
+        return keyword

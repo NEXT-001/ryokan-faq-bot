@@ -9,6 +9,14 @@ import os
 
 class SpecializedLinkService:
     def __init__(self):
+        # 翻訳サービスのインポート
+        try:
+            from services.translation_service import TranslationService
+            self.translation_service = TranslationService()
+        except ImportError:
+            print("[SPECIALIZED_LINK] 翻訳サービスが利用できません")
+            self.translation_service = None
+        
         # 観光情報専門サイト（信頼度順）
         self.tourism_sites = [
             {
@@ -24,7 +32,7 @@ class SpecializedLinkService:
                 'base_url': 'https://www.google.com',
                 'search_pattern': '/maps/search/{query}+{location}',
                 'strength': ['地図情報', '営業時間', 'ルート案内'],
-                'languages': ['ja', 'en', 'ko', 'zh'],
+                'languages': ['ja', 'en', 'ko', 'zh', 'tw'],
                 'priority': 2
             }
         ]
@@ -36,7 +44,7 @@ class SpecializedLinkService:
                 'base_url': 'https://r.gnavi.co.jp',
                 'search_pattern': '/area/jp/rs/?fw={keyword}&area={area}',
                 'strength': ['レストラン予約', '地域グルメ'],
-                'languages': ['ja', 'en', 'ko', 'zh'],
+                'languages': ['ja', 'en', 'ko', 'zh', 'tw'],
                 'priority': 1
             },
             {
@@ -133,8 +141,12 @@ class SpecializedLinkService:
             base_url = site['base_url']
             pattern = site['search_pattern']
             
-            # クエリをURLエンコード
-            encoded_query = urllib.parse.quote(query)
+            # 外国語のクエリを日本語に翻訳（URL用）
+            japanese_query = self._translate_query_to_japanese(query, language)
+            print(f"[SPECIALIZED_LINK] URL用クエリ翻訳: '{query}' → '{japanese_query}'")
+            
+            # 翻訳されたクエリをURLエンコード
+            encoded_query = urllib.parse.quote(japanese_query)
             
             # 位置情報から地域コードを取得
             area_code = self._get_area_code(location, site['name'])
@@ -183,7 +195,8 @@ class SpecializedLinkService:
         city = location.get('city', '')
         if city:
             city_encoded = urllib.parse.quote(city)
-            return f"https://r.gnavi.co.jp/area/jp/rs/?fwp={city_encoded}&fw={query}"
+            return f"https://r.gnavi.co.jp/area/jp/rs/?fwp={city_encoded}"
+            # return f"https://r.gnavi.co.jp/area/jp/rs/?fwp={city_encoded}&fw={query}"
         else:
             return f"https://r.gnavi.co.jp/search/?fw={query}"
     
@@ -287,7 +300,8 @@ class SpecializedLinkService:
         }
         
         area_code = tabelog_codes.get(prefecture, 'japan')
-        return f"https://tabelog.com/{area_code}/rstLst/?word={query}"
+        return f"https://tabelog.com/{area_code}/rstLst/"
+        # return f"https://tabelog.com/{area_code}/rstLst/?word={query}"
     
     def _get_area_code(self, location: Dict, site_name: str) -> Optional[str]:
         """サイト固有の地域コードを取得"""
@@ -314,7 +328,7 @@ class SpecializedLinkService:
         return gurunavi_codes.get(prefecture)
     
     def _get_localized_site_name(self, site_name: str, language: str) -> str:
-        """言語に応じたサイト名を取得"""
+        """言語に応じたサイト名を取得（繁体字サポート追加）"""
         if language == 'en':
             name_mapping = {
                 'じゃらんnet': '🗾 Jalan Tourism Guide',
@@ -331,6 +345,24 @@ class SpecializedLinkService:
                 'Google Maps': '🗺️ 지도정보 (Google Maps)'
             }
             return name_mapping.get(site_name, f"🔍 {site_name}에서 자세히 보기")
+        elif language in ['zh', 'zh-cn']:
+            # 簡体字中国語
+            name_mapping = {
+                'じゃらんnet': '🗾 旅游信息（Jalan）',
+                'ぐるなび': '🍽️ 餐厅信息（Gurunavi）',
+                '食べログ': '⭐ 餐厅评价（Tabelog）',
+                'Google Maps': '🗺️ 地图信息（Google Maps）'
+            }
+            return name_mapping.get(site_name, f"🔍 {site_name}详细信息")
+        elif language in ['tw', 'zh-tw']:
+            # 繁体字中国語
+            name_mapping = {
+                'じゃらんnet': '🗾 觀光資訊（Jalan）',
+                'ぐるなび': '🍽️ 餐廳資訊（Gurunavi）',
+                '食べログ': '⭐ 餐廳評價（Tabelog）',
+                'Google Maps': '🗺️ 地圖資訊（Google Maps）'
+            }
+            return name_mapping.get(site_name, f"🔍 {site_name}詳細資訊")
         else:
             # 日本語（デフォルト）
             name_mapping = {
@@ -422,3 +454,33 @@ class SpecializedLinkService:
             # 国際対応（代替処理）
             '韓国': '130000'  # 東京をフォールバック
         }
+    
+    def _translate_query_to_japanese(self, query: str, language: str) -> str:
+        """
+        外国語のクエリを日本語に翻訳（URL用）
+        
+        Args:
+            query: 翻訳対象クエリ
+            language: 元の言語コード
+            
+        Returns:
+            str: 日本語に翻訳されたクエリ
+        """
+        # 既に日本語の場合はそのまま返す
+        if language == 'ja':
+            return query
+        
+        # 翻訳サービスが利用できない場合はそのまま返す
+        if not self.translation_service:
+            print(f"[SPECIALIZED_LINK] 翻訳サービス利用不可、元のクエリを使用: '{query}'")
+            return query
+        
+        try:
+            # キーワードを日本語に翻訳
+            japanese_query = self.translation_service.translate_text(query, 'ja', language)
+            print(f"[SPECIALIZED_LINK] クエリ翻訳: '{query}' ({language}) → '{japanese_query}' (ja)")
+            return japanese_query
+        except Exception as e:
+            print(f"[SPECIALIZED_LINK] クエリ翻訳エラー: {e}")
+            # エラー時は元のクエリを返す
+            return query
