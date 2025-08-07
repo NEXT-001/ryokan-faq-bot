@@ -36,7 +36,7 @@ def translate_faq_to_languages(question, answer):
         "en": "English",
         "ko": "Korean", 
         "zh": "Chinese (Simplified)",
-        "zh-tw": "Traditional Chinese (Taiwan)"
+        "tw": "Traditional Chinese (Taiwan)"
     }
     
     translations = {}

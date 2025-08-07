@@ -48,10 +48,14 @@ def user_page(company_id):
     # セッション状態の初期化
     if 'conversation_history' not in st.session_state:
         st.session_state.conversation_history = []
+    if 'current_language' not in st.session_state:
+        st.session_state.current_language = None  # 初回は言語検出を強制
     
     # 履歴クリアボタン
     if st.button("会話履歴をクリア"):
         st.session_state.conversation_history = []
+        st.session_state.current_language = None  # 言語状態もリセット（初回検出を強制）
+
         # ウィジェットのキーは直接クリアせず、rerunで対応
         st.success("会話履歴をクリアしました！")
         st.rerun()
@@ -153,12 +157,13 @@ def user_page(company_id):
                 'gps_coords': None  # GPS使用は停止
             }
             
-            # 統合レスポンス取得
+            # 統合レスポンス取得（前回言語情報を渡す）
             unified_result = unified_chat.get_unified_response(
                 user_input, 
                 company_id, 
                 user_info,
-                location_context
+                location_context,
+                previous_language=st.session_state.current_language
             )
             
             # 処理完了後、状態表示をクリア
@@ -174,6 +179,11 @@ def user_page(company_id):
                 user_info=user_info
             )
             
+            # セッション状態に言語情報を保存
+            if 'original_language' in unified_result:
+                st.session_state.current_language = unified_result['original_language']
+                print(f"[USER_PAGE] セッション言語更新: {st.session_state.current_language}")
+            
             # 会話履歴に追加
             st.session_state.conversation_history.append({
                 "user_info": user_info,
@@ -181,7 +191,8 @@ def user_page(company_id):
                 "answer": unified_result["answer"],
                 "response_type": unified_result["response_type"],
                 "confidence_score": unified_result["confidence_score"],
-                "needs_human_support": unified_result["needs_human_support"]
+                "needs_human_support": unified_result["needs_human_support"],
+                "original_language": unified_result.get("original_language", "ja")
             })
             
             # 人間サポートが必要な場合の表示
