@@ -91,6 +91,7 @@ def test_email_configuration():
         return True
         
     except Exception as e:
-        print(f"[EMAIL TEST ERROR] {e}")
-        print(f"[EMAIL TEST TRACEBACK] {traceback.format_exc()}")
+        UnifiedConfig.log_error("メール設定テストに失敗しました")
+        UnifiedConfig.log_debug(f"エラー詳細: {e}")
+        UnifiedConfig.log_debug(f"トレースバック: {traceback.format_exc()}")
         return False

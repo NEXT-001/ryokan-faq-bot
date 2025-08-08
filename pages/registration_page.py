@@ -1,10 +1,12 @@
 """
-登録ページ
+登録ページ（最適化版）
 pages/registration_page.py
 """
 import streamlit as st
 from utils.db_utils import init_db, register_user
 from services.enhanced_location_service import EnhancedLocationService
+from utils.streamlit_optimization import StreamlitOptimizer, FormValidator
+from config.unified_config import UnifiedConfig
 
 
 def hide_entire_sidebar():

@@ -12,6 +12,7 @@ import pandas as pd
 import numpy as np
 import pickle
 from datetime import datetime
+from config.unified_config import UnifiedConfig
 
 
 def generate_company_id(company_name):
@@ -88,9 +89,11 @@ def get_existing_company_ids_from_sqlite():
         conn.close()
         
     except sqlite3.Error as e:
-        print(f"[SQLITE ERROR] {e}")
+        UnifiedConfig.log_error("データベースアクセスエラーが発生しました")
+        UnifiedConfig.log_debug(f"SQLiteエラー詳細: {e}")
     except Exception as e:
-        print(f"[SQLITE ERROR] 予期しないエラー: {e}")
+        UnifiedConfig.log_error("予期しないエラーが発生しました")
+        UnifiedConfig.log_debug(f"エラー詳細: {e}")
     
     return existing_ids
 
@@ -286,5 +289,6 @@ def create_company_folder_structure(company_id, company_name, password, email, l
         return True
         
     except Exception as e:
-        print(f"[ERROR] 会社フォルダ構造の作成に失敗しました: {e}")
+        UnifiedConfig.log_error("会社フォルダ構造の作成に失敗しました")
+        UnifiedConfig.log_debug(f"エラー詳細: {e}")
         return False

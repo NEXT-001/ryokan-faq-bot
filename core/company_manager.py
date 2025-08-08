@@ -184,7 +184,8 @@ def create_company_folder_structure(company_id, company_name):
         
         # フォルダ作成確認
         if not os.path.exists(company_folder):
-            print(f"[FOLDER ERROR] フォルダ作成に失敗: {company_folder}")
+            UnifiedConfig.log_error("フォルダ作成に失敗しました")
+            UnifiedConfig.log_debug(f"対象フォルダ: {company_folder}")
             return False
         
         # 1. FAQ用のCSVファイルを作成
@@ -212,7 +213,8 @@ def create_company_folder_structure(company_id, company_name):
                 pd.DataFrame(sample_faq).to_csv(faq_csv_path, index=False, encoding='utf-8')
                 print(f"[FILE CREATED] {faq_csv_path}")
             except Exception as e:
-                print(f"[FILE ERROR] FAQ CSV作成失敗: {e}")
+                UnifiedConfig.log_error("FAQ CSVファイル作成に失敗しました")
+                UnifiedConfig.log_debug(f"エラー詳細: {e}")
         else:
             print(f"[FILE EXISTS] {faq_csv_path}")
         
@@ -231,7 +233,8 @@ def create_company_folder_structure(company_id, company_name):
                     pickle.dump(empty_embeddings, f)
                 print(f"[FILE CREATED] {embeddings_path}")
             except Exception as e:
-                print(f"[FILE ERROR] エンベディングファイル作成失敗: {e}")
+                UnifiedConfig.log_error("エンベディングファイル作成に失敗しました")
+                UnifiedConfig.log_debug(f"エラー詳細: {e}")
         else:
             print(f"[FILE EXISTS] {embeddings_path}")
         
@@ -253,7 +256,8 @@ def create_company_folder_structure(company_id, company_name):
                 pd.DataFrame(history_headers).to_csv(history_csv_path, index=False, encoding='utf-8')
                 print(f"[FILE CREATED] {history_csv_path}")
             except Exception as e:
-                print(f"[FILE ERROR] 履歴CSV作成失敗: {e}")
+                UnifiedConfig.log_error("履歴CSVファイル作成に失敗しました")
+                UnifiedConfig.log_debug(f"エラー詳細: {e}")
         else:
             print(f"[FILE EXISTS] {history_csv_path}")
         
@@ -274,7 +278,8 @@ def create_company_folder_structure(company_id, company_name):
             return False
         
     except Exception as e:
-        print(f"[ERROR] 会社フォルダ構造の作成に失敗しました: {e}")
+        UnifiedConfig.log_error("会社フォルダ構造の作成に失敗しました")
+        UnifiedConfig.log_debug(f"エラー詳細: {e}")
         import traceback
         print(f"[FOLDER TRACEBACK] {traceback.format_exc()}")
         return False

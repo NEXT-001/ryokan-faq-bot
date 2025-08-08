@@ -16,6 +16,7 @@ from services.specialized_link_service import SpecializedLinkService
 from services.enhanced_location_service import EnhancedLocationService
 from services.google_places_service import GooglePlacesService, format_google_places_response
 from services.translation_service import TranslationService
+from config.unified_config import UnifiedConfig
 
 # 信頼度しきい値
 HIGH_CONFIDENCE_THRESHOLD = 0.8
@@ -98,10 +99,10 @@ class UnifiedChatService:
         # Step 1: 言語自動検出 & 日本語翻訳（改善版）
         if previous_language and previous_language != 'ja':
             # 前回が外国語の場合、同一言語の可能性を考慮
-            print(f"[UNIFIED_CHAT] 前回言語: {previous_language}, 継続使用を検討")
+            UnifiedConfig.log_debug(f"前回言語: {previous_language}, 継続使用を検討")
             # 簡単な言語一致チェック（ハングル、英語アルファベット等）
             if self._matches_previous_language(user_input, previous_language):
-                print(f"[UNIFIED_CHAT] 前回言語継続使用: {previous_language}")
+                UnifiedConfig.log_debug(f"前回言語継続使用: {previous_language}")
                 # 前回言語を使って日本語に翻訳
                 translated_input = self.translation_service._translate_to_japanese_fast(user_input, previous_language)
                 original_language = previous_language
@@ -110,24 +111,24 @@ class UnifiedChatService:
                 translated_input, original_language = self.translation_service.detect_language_and_translate_to_japanese(user_input)
         else:
             # 初回の場合は確実な言語検出を実行
-            print(f"[UNIFIED_CHAT] 初回検索または前回日本語: 言語検出を実行")
+            UnifiedConfig.log_debug("初回検索または前回日本語: 言語検出を実行")
             translated_input, original_language = self.translation_service.detect_language_and_translate_to_japanese(user_input)
             
             # 英語検出の追加確認（初回の英語検出改善）
             if original_language == 'ja' and self._likely_english(user_input):
-                print(f"[UNIFIED_CHAT] 英語パターン再検出: '{user_input}'")
+                UnifiedConfig.log_debug(f"英語パターン再検出: '{user_input}'")
                 try:
                     translated_input = self.translation_service.translate_text(user_input, 'ja', 'en')
                     original_language = 'en'
-                    print(f"[UNIFIED_CHAT] 英語として再処理: '{user_input}' → '{translated_input}'")
+                    UnifiedConfig.log_debug(f"英語として再処理: '{user_input}' → '{translated_input}'")
                 except Exception as e:
-                    print(f"[UNIFIED_CHAT] 英語再検出失敗: {e}, 日本語として処理継続")
+                    UnifiedConfig.log_debug(f"英語再検出失敗: {e}, 日本語として処理継続")
         
-        print(f"[UNIFIED_CHAT] 言語検出: {original_language}, 翻訳: '{user_input}' → '{translated_input}'")
+        UnifiedConfig.log_debug(f"言語検出: {original_language}, 翻訳: '{user_input}' → '{translated_input}'")
         
         # デバッグ：翻訳結果のキーワードチェック
-        print(f"[DEBUG] 翻訳後の観光キーワード検出: {any(keyword in translated_input.lower() for keyword in TOURISM_KEYWORDS)}")
-        print(f"[DEBUG] 翻訳後のレストランキーワード検出: {any(keyword in translated_input.lower() for keyword in GENERAL_RESTAURANT_KEYWORDS)}")
+        UnifiedConfig.log_debug(f"翻訳後の観光キーワード検出: {any(keyword in translated_input.lower() for keyword in TOURISM_KEYWORDS)}")
+        UnifiedConfig.log_debug(f"翻訳後のレストランキーワード検出: {any(keyword in translated_input.lower() for keyword in GENERAL_RESTAURANT_KEYWORDS)}")
         
         # Step 2: 位置情報の正規化（多言語対応）
         location_info = self._get_optimized_location(location_context, company_id)
@@ -144,7 +145,7 @@ class UnifiedChatService:
                     'location': user_location_data,
                     'confidence': 0.98
                 }
-                print(f"[DEBUG] ユーザー入力位置を優先使用: {user_location_data}")
+                UnifiedConfig.log_debug(f"ユーザー入力位置を優先使用: {user_location_data}")
             else:
                 # フォールバック: 従来の正規化処理
                 normalized_location = self._normalize_location_for_context(original_location)
@@ -168,7 +169,7 @@ class UnifiedChatService:
             'confidence': max(restaurant_analysis_original['confidence'], restaurant_analysis_translated['confidence'])
         }
         
-        print(f"[DEBUG] 意図検出統合結果 - 観光: {tourism_intent}, レストラン: {restaurant_analysis}")
+        UnifiedConfig.log_debug(f"意図検出統合結果 - 観光: {tourism_intent}, レストラン: {restaurant_analysis}")
         
         # Step 5: インテリジェントなレスポンス生成（日本語で生成）
         response = self._generate_intelligent_response(
@@ -401,22 +402,22 @@ class UnifiedChatService:
         """
         位置情報入力を正規化（多言語→日本語地名）
         """
-        print(f"[DEBUG] 位置情報正規化開始: '{location_input}'")
+        UnifiedConfig.log_debug(f"位置情報正規化開始: '{location_input}'")
         try:
             location_data = self.location_service.validate_location_input(location_input)
-            print(f"[DEBUG] validate_location_input結果: {location_data}")
+            UnifiedConfig.log_debug(f"validate_location_input結果: {location_data}")
             
             if location_data and 'city' in location_data:
                 # '市'を除去して返す
                 city_name = location_data['city']
                 if city_name.endswith('市'):
                     normalized = city_name[:-1]  # '福岡市' → '福岡'
-                    print(f"[DEBUG] 市除去後: '{city_name}' → '{normalized}'")
+                    UnifiedConfig.log_debug(f"市除去後: '{city_name}' → '{normalized}'")
                     return normalized
-                print(f"[DEBUG] そのまま返す: '{city_name}'")
+                UnifiedConfig.log_debug(f"そのまま返す: '{city_name}'")
                 return city_name
             
-            print(f"[DEBUG] 正規化失敗、元の入力を返す: '{location_input}'")
+            UnifiedConfig.log_debug(f"正規化失敗、元の入力を返す: '{location_input}'")
             return location_input
         except Exception as e:
             print(f"[UNIFIED_CHAT] 位置情報正規化エラー: {e}")
@@ -475,10 +476,10 @@ class UnifiedChatService:
         # 日本語・英語・韓国語・中国語のキーワードチェック
         has_tourism_keyword = any(keyword.lower() in text_lower for keyword in TOURISM_KEYWORDS)
         
-        print(f"[DEBUG] 観光意図検出 - テキスト: '{text}', 結果: {has_tourism_keyword}")
+        UnifiedConfig.log_debug(f"観光意図検出 - テキスト: '{text}', 結果: {has_tourism_keyword}")
         if has_tourism_keyword:
             matching_keywords = [k for k in TOURISM_KEYWORDS if k.lower() in text_lower]
-            print(f"[DEBUG] マッチしたキーワード: {matching_keywords}")
+            UnifiedConfig.log_debug(f"マッチしたキーワード: {matching_keywords}")
         
         return has_tourism_keyword
     
@@ -493,12 +494,12 @@ class UnifiedChatService:
             for keyword in GENERAL_RESTAURANT_KEYWORDS
         )
         
-        print(f"[DEBUG] レストラン意図分析 - 元テキスト: '{text}', 小文字: '{text_lower}', キーワード検出: {has_restaurant_keywords}")
+        UnifiedConfig.log_debug(f"レストラン意図分析 - 元テキスト: '{text}', 小文字: '{text_lower}', キーワード検出: {has_restaurant_keywords}")
         if has_restaurant_keywords:
             matching_keywords = [k for k in GENERAL_RESTAURANT_KEYWORDS if k.lower() in text_lower or k in text]
-            print(f"[DEBUG] マッチしたレストランキーワード: {matching_keywords}")
+            UnifiedConfig.log_debug(f"マッチしたレストランキーワード: {matching_keywords}")
         else:
-            print(f"[DEBUG] 利用可能なレストランキーワード（一部）: {GENERAL_RESTAURANT_KEYWORDS[:10]}")
+            UnifiedConfig.log_debug(f"利用可能なレストランキーワード（一部）: {GENERAL_RESTAURANT_KEYWORDS[:10]}")
         
         if not has_restaurant_keywords:
             return {
@@ -568,7 +569,7 @@ class UnifiedChatService:
         
         # 観光質問の専用処理
         if tourism_intent:
-            print(f"[DEBUG] 観光質問として処理開始")
+            UnifiedConfig.log_debug("観光質問として処理開始")
             return self._handle_tourism_specific_query(
                 faq_result, translated_input, location_info, language,
                 company_id, user_info
@@ -800,13 +801,13 @@ class UnifiedChatService:
     ) -> Dict:
         """観光専用クエリ処理"""
         
-        print(f"[DEBUG] 観光専用クエリ処理開始")
-        print(f"[DEBUG] location_info: {location_info}")
-        print(f"[DEBUG] language: {language}")
-        print(f"[DEBUG] translated_input: '{translated_input}'")
+        UnifiedConfig.log_debug("観光専用クエリ処理開始")
+        UnifiedConfig.log_debug(f"location_info: {location_info}")
+        UnifiedConfig.log_debug(f"language: {language}")
+        UnifiedConfig.log_debug(f"translated_input: '{translated_input}'")
         
         if not location_info:
-            print(f"[DEBUG] 位置情報なしのため早期終了")
+            UnifiedConfig.log_debug("位置情報なしのため早期終了")
             # 多言語対応メッセージ
             no_location_messages = {
                 'en': "🌸 **Tourism Information:**\nPlease set your location to get detailed tourist information.",
@@ -826,27 +827,27 @@ class UnifiedChatService:
             }
         
         city_name = location_info.get('location', {}).get('city', '不明な地域')
-        print(f"[DEBUG] 検索対象都市: '{city_name}'")
+        UnifiedConfig.log_debug(f"検索対象都市: '{city_name}'")
         
         try:
             # Google Places APIで観光スポット検索
-            print(f"[DEBUG] Google Places API検索開始: city='{city_name}', query='{translated_input}', language='{language}'")
+            UnifiedConfig.log_debug(f"Google Places API検索開始: city='{city_name}', query='{translated_input}', language='{language}'")
             google_places = self.google_places.search_tourism_spots(city_name, translated_input, language)
-            print(f"[DEBUG] Google Places API結果数: {len(google_places) if google_places else 0}")
+            UnifiedConfig.log_debug(f"Google Places API結果数: {len(google_places) if google_places else 0}")
             
             if google_places:
-                print(f"[DEBUG] Google Places APIから結果取得、フォーマット開始")
+                UnifiedConfig.log_debug("Google Places APIから結果取得、フォーマット開始")
                 # Google Places APIの結果を使用（元の言語で表示）
                 response_text = format_google_places_response(google_places, city_name, "観光スポット", language)
                 
                 # 追加の専門リンクも提供（URL日本語、ラベル多言語）
-                print(f"[DEBUG] 専門リンク生成開始: translated_input='{translated_input}', location={location_info['location']}")
+                UnifiedConfig.log_debug(f"専門リンク生成開始: translated_input='{translated_input}', location={location_info['location']}")
                 links = self._generate_localized_links(
                     translated_input, location_info['location'], 'tourism', language
                 )
-                print(f"[DEBUG] 専門リンク生成結果: {len(links)}件")
+                UnifiedConfig.log_debug(f"専門リンク生成結果: {len(links)}件")
                 for i, link in enumerate(links[:3]):
-                    print(f"[DEBUG] リンク{i+1}: {link['name']} -> {link['url']}")
+                    UnifiedConfig.log_debug(f"リンク{i+1}: {link['name']} -> {link['url']}")
                 
                 if links:
                     # 多言語対応ヘッダー
@@ -861,23 +862,23 @@ class UnifiedChatService:
                     for link in links[:2]:
                         response_text += f"• **[{link['name']}]({link['url']})**\n"
                 else:
-                    print(f"[DEBUG] 専門リンクが生成されませんでした")
+                    UnifiedConfig.log_debug("専門リンクが生成されませんでした")
             else:
-                print(f"[DEBUG] Google Places APIから結果なし、フォールバック開始")
+                UnifiedConfig.log_debug("Google Places APIから結果なし、フォールバック開始")
                 # フォールバック: 従来の観光情報生成（元の言語で生成）
                 tourism_response, tourism_links = generate_tourism_response_by_city(
                     translated_input, city_name, language
                 )
-                print(f"[DEBUG] フォールバック観光レスポンス生成: '{tourism_response[:100]}...'")
+                UnifiedConfig.log_debug(f"フォールバック観光レスポンス生成: '{tourism_response[:100]}...'")
                 
                 # 専門リンク生成（翻訳済み日本語でURL生成、ラベルは元言語）
-                print(f"[DEBUG] フォールバック専門リンク生成開始: location={location_info['location']}")
+                UnifiedConfig.log_debug(f"フォールバック専門リンク生成開始: location={location_info['location']}")
                 links = self._generate_localized_links(
                     translated_input, location_info['location'], 'tourism', language
                 )
-                print(f"[DEBUG] フォールバック専門リンク数: {len(links)}")
+                UnifiedConfig.log_debug(f"フォールバック専門リンク数: {len(links)}")
                 for i, link in enumerate(links[:3]):
-                    print(f"[DEBUG] フォールバックリンク{i+1}: {link['name']} -> {link['url']}")
+                    UnifiedConfig.log_debug(f"フォールバックリンク{i+1}: {link['name']} -> {link['url']}")
                 
                 # ヘッダーを元言語に対応
                 if language == 'ko':
