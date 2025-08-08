@@ -136,11 +136,11 @@ def user_page(company_id):
     
     # 統合チャット入力窓
     user_input = st.text_input(
-        "ご質問をどうぞ（FAQ・観光・グルメ何でもお答えします）：", 
+        "ご質問をどうぞ（日本語、英語、韓国語、中国語、台湾語に対応）：", 
         key="user_input", 
-        placeholder="例: チェックインの時間は？ / 別府の観光スポットは？ / おすすめのレストランは？"
+        placeholder="例: チェックインの時間は？ / 観光スポットは？(추천 관광지는?) / 人気のレストランは？(추천 레스토랑은?)"
     )
-    st.caption("💡 FAQ、観光情報、グルメ情報をまとめてお答えします")
+    st.caption("💡 FAQ・観光スポット・人気レストラン情報をお答えします")
     
     if user_input:
         # st.spinnerを削除してDOM競合を回避
