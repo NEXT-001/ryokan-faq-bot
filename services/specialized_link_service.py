@@ -57,6 +57,46 @@ class SpecializedLinkService:
             }
         ]
         
+        # ショッピング専門サイト
+        self.shopping_sites = [
+            {
+                'name': 'Google Maps',
+                'base_url': 'https://www.google.com',
+                'search_pattern': '/maps/search/{query}+{location}+ショッピングモール',
+                'strength': ['ショッピングモール', '百貨店', '営業時間'],
+                'languages': ['ja', 'en', 'ko', 'zh', 'tw'],
+                'priority': 1
+            },
+            {
+                'name': 'ホットペッパー',
+                'base_url': 'https://www.hotpepper.jp',
+                'search_pattern': '/shop/?keyword={query}&area={location}',
+                'strength': ['店舗情報', 'クーポン'],
+                'languages': ['ja'],
+                'priority': 2
+            }
+        ]
+        
+        # 体験・アクティビティ専門サイト
+        self.activity_sites = [
+            {
+                'name': 'じゃらん体験',
+                'base_url': 'https://www.jalan.net',
+                'search_pattern': '/kankou/{prefecture_code}/activity/?keyword={query}',
+                'strength': ['体験予約', 'アクティビティ'],
+                'languages': ['ja'],
+                'priority': 1
+            },
+            {
+                'name': 'Google Maps',
+                'base_url': 'https://www.google.com',
+                'search_pattern': '/maps/search/{query}+{location}+体験+ワークショップ',
+                'strength': ['体験施設', '地図情報', '営業時間'],
+                'languages': ['ja', 'en', 'ko', 'zh', 'tw'],
+                'priority': 2
+            }
+        ]
+        
         # 地域コードマッピング
         self.area_codes = self._load_area_codes()
         
@@ -76,7 +116,7 @@ class SpecializedLinkService:
         Args:
             query: 検索クエリ
             location: 位置情報
-            intent_type: 'tourism' または 'restaurant'
+            intent_type: 'tourism', 'restaurant', 'shopping', または 'activity'
             language: 言語コード
             
         Returns:
@@ -95,6 +135,14 @@ class SpecializedLinkService:
                 sites = [site for site in self.restaurant_sites 
                         if site['name'] in ['Google Maps'] 
                         and language in site['languages']]
+            elif intent_type == 'shopping':
+                sites = [site for site in self.shopping_sites 
+                        if site['name'] in ['Google Maps'] 
+                        and language in site['languages']]
+            elif intent_type == 'activity':
+                sites = [site for site in self.activity_sites 
+                        if site['name'] in ['Google Maps'] 
+                        and language in site['languages']]
             else:
                 # 混合の場合
                 tourism_sites = [site for site in self.tourism_sites 
@@ -110,11 +158,17 @@ class SpecializedLinkService:
                 sites = [site for site in self.tourism_sites if language in site['languages']]
             elif intent_type == 'restaurant':
                 sites = [site for site in self.restaurant_sites if language in site['languages']]
+            elif intent_type == 'shopping':
+                sites = [site for site in self.shopping_sites if language in site['languages']]
+            elif intent_type == 'activity':
+                sites = [site for site in self.activity_sites if language in site['languages']]
             else:
-                # 混合の場合は両方
+                # 混合の場合は全サイト
                 tourism_sites = [site for site in self.tourism_sites if language in site['languages']]
                 restaurant_sites = [site for site in self.restaurant_sites if language in site['languages']]
-                sites = sorted(tourism_sites + restaurant_sites, key=lambda x: x['priority'])
+                shopping_sites = [site for site in self.shopping_sites if language in site['languages']]
+                activity_sites = [site for site in self.activity_sites if language in site['languages']]
+                sites = sorted(tourism_sites + restaurant_sites + shopping_sites + activity_sites, key=lambda x: x['priority'])
         
         # 上位5サイトのリンクを生成
         for site in sites[:5]:

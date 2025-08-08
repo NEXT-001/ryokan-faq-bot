@@ -7,8 +7,7 @@ from config.unified_config import UnifiedConfig
 from services.unified_chat_service import UnifiedChatService
 from services.history_service import log_interaction
 from services.company_service import get_company_name
-# GPS機能は削除されました
-
+from streamlit_javascript import st_javascript
 
 def hide_entire_sidebar():
     """サイドバー全体を非表示にする"""
@@ -136,13 +135,76 @@ def user_page(company_id):
     
     # 統合チャット入力窓
     user_input = st.text_input(
-        "ご質問をどうぞ（日本語、英語、韓国語、中国語、台湾語に対応）：", 
+        "ご質問をどうぞ（日本語、英語、韓国語、中国語(簡体字)、中国語(繁体字)に対応）：", 
         key="user_input", 
         placeholder="例: チェックインの時間は？ / 観光スポットは？(추천 관광지는?) / 人気のレストランは？(추천 레스토랑은?)"
     )
     st.caption("💡 FAQ・観光スポット・人気レストラン情報をお答えします")
     
-    if user_input:
+    # JSでブラウザ言語を取得
+    lang = st_javascript("await navigator.language")  # 例: "ja", "en-US", "zh-TW"
+    # lang = "ko"
+    
+    if not lang:
+        lang = "ja"
+
+    # 言語別のクイック検索ボタン用テキスト
+    translations = {
+        "en": (
+            "What are the tourist spots?",
+            "What are some popular restaurants?"
+        ),
+        "ja": (
+            "観光スポットは？",
+            "おすすめのレストランは？"
+        ),
+        "ko": (
+            "관광 명소는?",
+            "인기있는 레스토랑은?"
+        ),
+        "zh-CN": (
+            "旅游景点有哪些？",
+            "热门餐厅有哪些？"
+        ),
+        "zh-TW": (
+            "旅遊景點有哪些？",
+            "有哪些人氣餐廳？"
+        ),
+    }
+
+    # langの先頭2文字や完全一致を順に探す
+    keys = [lang, lang[:2]] if len(lang) >= 2 else [lang]
+    q1, q2 = translations.get("en")  # デフォルト英語
+    for k in keys:
+        if k in translations:
+            q1, q2 = translations[k]
+            break
+
+    # クイック検索ボタン
+    st.markdown("**🚀 クイック検索:**")
+    col1, col2 = st.columns(2)
+    
+    # セッション状態の初期化
+    if 'quick_search_query' not in st.session_state:
+        st.session_state.quick_search_query = None
+    
+    with col1:
+        if st.button(f"🏛️ {q1}", key="sights_button"):
+            st.session_state.quick_search_query = q1
+    
+    with col2:
+        if st.button(f"🍽️ {q2}", key="restaurants_button"):
+            st.session_state.quick_search_query = q2
+    
+    # クイック検索ボタンが押された場合はボタンの内容を優先、そうでなければテキスト入力
+    if st.session_state.quick_search_query:
+        process_query = st.session_state.quick_search_query
+        # 一度使用したらクリア
+        st.session_state.quick_search_query = None
+    else:
+        process_query = user_input
+    
+    if process_query:
         # st.spinnerを削除してDOM競合を回避
         status_placeholder = st.empty()
         status_placeholder.info("回答を生成中...（FAQ・観光・グルメ情報を統合）")
@@ -159,7 +221,7 @@ def user_page(company_id):
             
             # 統合レスポンス取得（前回言語情報を渡す）
             unified_result = unified_chat.get_unified_response(
-                user_input, 
+                process_query, 
                 company_id, 
                 user_info,
                 location_context,
@@ -171,7 +233,7 @@ def user_page(company_id):
             
             # 履歴記録
             log_interaction(
-                question=user_input,
+                question=process_query,
                 answer=unified_result["answer"],
                 input_tokens=0,  # 統合サービスでトークン数を管理
                 output_tokens=0,
@@ -187,7 +249,7 @@ def user_page(company_id):
             # 会話履歴に追加
             st.session_state.conversation_history.append({
                 "user_info": user_info,
-                "question": user_input, 
+                "question": process_query, 
                 "answer": unified_result["answer"],
                 "response_type": unified_result["response_type"],
                 "confidence_score": unified_result["confidence_score"],
@@ -204,7 +266,7 @@ def user_page(company_id):
             st.error(f"エラーが発生しました: {str(e)}")
             st.session_state.conversation_history.append({
                 "user_info": user_info,
-                "question": user_input, 
+                "question": process_query, 
                 "answer": "申し訳ございません。現在システムに問題が発生しております。しばらくお待ちください。",
                 "response_type": "error"
             })

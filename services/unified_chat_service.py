@@ -65,6 +65,44 @@ GENERAL_RESTAURANT_KEYWORDS = [
     '小吃', '特色菜', '当地美食', '當地美食', '有什么', '有什麼'
 ]
 
+# ショッピング関連キーワード（多言語対応）
+SHOPPING_KEYWORDS = [
+    # 日本語
+    'ショッピング', '買い物', 'ショップ', '店', '店舗', '商店', 'デパート',
+    '百貨店', 'モール', 'ショッピングセンター', 'ショッピングモール', '商業施設',
+    'お土産', '土産', 'お買い物', '購入', '商店街',
+    # 英語
+    'shopping', 'shop', 'store', 'mall', 'shopping center', 'shopping mall',
+    'department store', 'retail', 'boutique', 'market', 'souvenir',
+    # 韓国語
+    '쇼핑', '쇼핑몰', '백화점', '상점', '가게', '시장', '쇼핑센터',
+    '구매', '상품', '기념품', '선물', '쇼핑거리',
+    # 中国語（簡体字・繁体字）
+    '购物', '購物', '商店', '商场', '百货', '商城', '购物中心', '購物中心',
+    '市场', '市場', '纪念品', '紀念品', '礼品', '禮品', '商业街', '商業街'
+]
+
+# 体験・アクティビティ関連キーワード（多言語対応）
+ACTIVITY_KEYWORDS = [
+    # 日本語
+    '体験', 'アクティビティ', 'イベント', '体験型', 'アトラクション',
+    '遊び', '楽しい', 'エンターテイメント', 'レクリエーション', '参加',
+    'ワークショップ', '手作り', 'クラフト', '陶芸', '料理教室',
+    'ものづくり', '制作', 'DIY', 'ハンズオン',
+    # 英語
+    'activity', 'activities', 'experience', 'hands-on', 'workshop',
+    'event', 'entertainment', 'recreation', 'attraction', 'interactive',
+    'craft', 'making', 'cooking class', 'pottery', 'DIY',
+    # 韓国語
+    '체험', '액티비티', '체험형', '이벤트', '워크샵', '만들기',
+    '핸즈온', '체험활동', '엔터테인먼트', '레크리에이션', '참가',
+    '공예', '요리교실', '도예', 'DIY',
+    # 中国語（簡体字・繁体字）
+    '体验', '體驗', '活动', '活動', '娱乐', '娛樂', '体验活动', '體驗活動',
+    '手工', '制作', '製作', '工作坊', '陶艺', '陶藝', '烹饪课', '烹飪課',
+    'DIY', '互动', '互動', '参与', '參與'
+]
+
 class UnifiedChatService:
     def __init__(self):
         self.line_service = LineNotificationService()
@@ -129,6 +167,8 @@ class UnifiedChatService:
         # デバッグ：翻訳結果のキーワードチェック
         UnifiedConfig.log_debug(f"翻訳後の観光キーワード検出: {any(keyword in translated_input.lower() for keyword in TOURISM_KEYWORDS)}")
         UnifiedConfig.log_debug(f"翻訳後のレストランキーワード検出: {any(keyword in translated_input.lower() for keyword in GENERAL_RESTAURANT_KEYWORDS)}")
+        UnifiedConfig.log_debug(f"翻訳後のショッピングキーワード検出: {any(keyword in translated_input.lower() for keyword in SHOPPING_KEYWORDS)}")
+        UnifiedConfig.log_debug(f"翻訳後のアクティビティキーワード検出: {any(keyword in translated_input.lower() for keyword in ACTIVITY_KEYWORDS)}")
         
         # Step 2: 位置情報の正規化（多言語対応）
         location_info = self._get_optimized_location(location_context, company_id)
@@ -156,11 +196,21 @@ class UnifiedChatService:
         # Step 3: FAQ検索（翻訳済みテキストで実行）
         faq_result = self._get_faq_with_confidence(translated_input, company_id, user_info)
         
-        # Step 4: 観光・グルメ意図検出（原文と翻訳済みテキスト両方で実行）
+        # Step 4: 統合意図検出（観光・グルメ・ショッピング・アクティビティ）
         tourism_intent = (self._detect_tourism_intent(user_input) or 
                          self._detect_tourism_intent(translated_input))
         restaurant_analysis_original = self._analyze_restaurant_intent(user_input)
         restaurant_analysis_translated = self._analyze_restaurant_intent(translated_input)
+        
+        # ショッピング意図検出
+        shopping_intent = (self._detect_shopping_intent(user_input) or 
+                          self._detect_shopping_intent(translated_input))
+        print(f"[UNIFIED_CHAT] ショッピング意図検出結果: {shopping_intent}")
+        
+        # アクティビティ意図検出
+        activity_intent = (self._detect_activity_intent(user_input) or 
+                          self._detect_activity_intent(translated_input))
+        print(f"[UNIFIED_CHAT] アクティビティ意図検出結果: {activity_intent}")
         
         # 原文または翻訳後のどちらかでレストラン意図が検出された場合を統合
         restaurant_analysis = {
@@ -169,12 +219,13 @@ class UnifiedChatService:
             'confidence': max(restaurant_analysis_original['confidence'], restaurant_analysis_translated['confidence'])
         }
         
-        UnifiedConfig.log_debug(f"意図検出統合結果 - 観光: {tourism_intent}, レストラン: {restaurant_analysis}")
+        UnifiedConfig.log_debug(f"意図検出統合結果 - 観光: {tourism_intent}, レストラン: {restaurant_analysis}, ショッピング: {shopping_intent}, アクティビティ: {activity_intent}")
         
         # Step 5: インテリジェントなレスポンス生成（日本語で生成）
         response = self._generate_intelligent_response(
             faq_result, translated_input, location_info, original_language,
-            tourism_intent, restaurant_analysis, company_id, user_info
+            tourism_intent, restaurant_analysis, shopping_intent, activity_intent, 
+            company_id, user_info
         )
         
         # Step 6: レスポンスの最終調整（スマート翻訳判定）
@@ -483,6 +534,48 @@ class UnifiedChatService:
         
         return has_tourism_keyword
     
+    def _detect_shopping_intent(self, text: str) -> bool:
+        """ショッピング意図検出（多言語対応）"""
+        text_lower = text.lower()
+        
+        # 日本語・英語・韓国語・中国語のキーワードチェック
+        has_shopping_keyword = any(keyword.lower() in text_lower for keyword in SHOPPING_KEYWORDS)
+        
+        # デバッグ用: 「ショッピング」を含む場合は強制的にTrue
+        if 'ショッピング' in text or 'shopping' in text_lower:
+            has_shopping_keyword = True
+            print(f"[SHOPPING_DETECT] 強制的にショッピング意図を検出: '{text}'")
+        
+        UnifiedConfig.log_debug(f"ショッピング意図検出 - テキスト: '{text}', 結果: {has_shopping_keyword}")
+        print(f"[SHOPPING_DETECT] テキスト: '{text}', 結果: {has_shopping_keyword}")
+        if has_shopping_keyword:
+            matching_keywords = [k for k in SHOPPING_KEYWORDS if k.lower() in text_lower]
+            UnifiedConfig.log_debug(f"マッチしたショッピングキーワード: {matching_keywords}")
+            print(f"[SHOPPING_DETECT] マッチしたキーワード: {matching_keywords}")
+        
+        return has_shopping_keyword
+    
+    def _detect_activity_intent(self, text: str) -> bool:
+        """体験・アクティビティ意図検出（多言語対応）"""
+        text_lower = text.lower()
+        
+        # 日本語・英語・韓国語・中国語のキーワードチェック
+        has_activity_keyword = any(keyword.lower() in text_lower for keyword in ACTIVITY_KEYWORDS)
+        
+        # デバッグ用: 「イベント」を含む場合は強制的にTrue
+        if 'イベント' in text or 'event' in text_lower:
+            has_activity_keyword = True
+            print(f"[ACTIVITY_DETECT] 強制的にアクティビティ意図を検出: '{text}'")
+        
+        UnifiedConfig.log_debug(f"アクティビティ意図検出 - テキスト: '{text}', 結果: {has_activity_keyword}")
+        print(f"[ACTIVITY_DETECT] テキスト: '{text}', 結果: {has_activity_keyword}")
+        if has_activity_keyword:
+            matching_keywords = [k for k in ACTIVITY_KEYWORDS if k.lower() in text_lower]
+            UnifiedConfig.log_debug(f"マッチしたアクティビティキーワード: {matching_keywords}")
+            print(f"[ACTIVITY_DETECT] マッチしたキーワード: {matching_keywords}")
+        
+        return has_activity_keyword
+    
     def _analyze_restaurant_intent(self, text: str) -> Dict:
         """レストラン意図の詳細分析（多言語対応）"""
         text_lower = text.lower()
@@ -549,7 +642,7 @@ class UnifiedChatService:
     def _generate_intelligent_response(
         self, faq_result: Dict, translated_input: str, location_info: Dict,
         language: str, tourism_intent: bool, restaurant_analysis: Dict,
-        company_id: str, user_info: str
+        shopping_intent: bool, activity_intent: bool, company_id: str, user_info: str
     ) -> Dict:
         """インテリジェントなレスポンス生成"""
         
@@ -565,6 +658,22 @@ class UnifiedChatService:
             return self._handle_restaurant_specific_query(
                 faq_result, translated_input, location_info, language,
                 restaurant_analysis, company_id, user_info
+            )
+        
+        # ショッピング質問の専用処理
+        if shopping_intent:
+            UnifiedConfig.log_debug("ショッピング質問として処理開始")
+            return self._handle_shopping_specific_query(
+                faq_result, translated_input, location_info, language,
+                company_id, user_info
+            )
+        
+        # 体験・アクティビティ質問の専用処理
+        if activity_intent:
+            UnifiedConfig.log_debug("アクティビティ質問として処理開始")
+            return self._handle_activity_specific_query(
+                faq_result, translated_input, location_info, language,
+                company_id, user_info
             )
         
         # 観光質問の専用処理
@@ -630,7 +739,9 @@ class UnifiedChatService:
             
             try:
                 # Google Places APIでレストラン検索
+                print(f"[UNIFIED_CHAT] レストラン検索開始 - 都市: '{city_name}', 言語: '{language}'")
                 google_restaurants = self.google_places.search_restaurants(city_name, translated_input, language)
+                print(f"[UNIFIED_CHAT] Google Placesレストラン検索結果: {len(google_restaurants) if google_restaurants else 0}件")
                 
                 if google_restaurants:
                     # Google Places APIの結果を使用（元言語で表示）
@@ -1176,3 +1287,167 @@ class UnifiedChatService:
             print(f"[TRANSLATE] 翻訳エラー: {e}")
             # エラー時は元のテキストを返す
             return response_text
+    
+    def _handle_shopping_specific_query(
+        self, faq_result: Dict, translated_input: str, location_info: Dict,
+        language: str, company_id: str, user_info: str
+    ) -> Dict:
+        """ショッピング専用クエリ処理"""
+        
+        UnifiedConfig.log_debug("ショッピング専用クエリ処理開始")
+        
+        if not location_info:
+            # 多言語対応メッセージ
+            no_location_messages = {
+                'en': "🛍️ **Shopping Information:**\nPlease set your location to get detailed shopping information.",
+                'ko': "🛍️ **쇼핑 정보:**\n위치를 설정하시면 더 자세한 쇼핑 정보를 안내해드릴 수 있습니다.",
+                'zh': "🛍️ **购物信息:**\n请设置您的位置，我们将为您提供更详细的购物信息。",
+                'tw': "🛍️ **購物資訊:**\n請設定您的位置，我們將為您提供更詳細的購物資訊。"
+            }
+            message = no_location_messages.get(language, "🛍️ **ショッピング情報について:**\n位置情報を設定していただくと、より詳しいショッピング情報をご案内できます。")
+            
+            return {
+                "answer": message,
+                "confidence_score": 0.5,
+                "response_type": "shopping_no_location",
+                "specialized_links": [],
+                "needs_human_support": False,
+                "location_enhanced": False
+            }
+        
+        city_name = location_info.get('location', {}).get('city', '不明な地域')
+        
+        try:
+            # Google Places APIでショッピング施設検索
+            google_places = self.google_places.search_shopping_centers(city_name, translated_input, language)
+            
+            if google_places:
+                # Google Places APIの結果を使用
+                response_text = format_google_places_response(google_places, city_name, "ショッピング", language)
+                response_type = "google_shopping"
+            else:
+                # フォールバック: 専門リンク生成
+                links = self._generate_localized_links(
+                    translated_input, location_info['location'], 'shopping', language
+                )
+                
+                # ヘッダー（多言語対応）
+                headers = {
+                    'en': f"🛍️ **{city_name} Shopping Information:**\n",
+                    'ko': f"🛍️ **{city_name} 쇼핑 정보:**\n",
+                    'zh': f"🛍️ **{city_name}购物信息:**\n",
+                    'tw': f"🛍️ **{city_name}購物資訊:**\n"
+                }
+                response_text = headers.get(language, f"🛍️ **{city_name}のショッピング情報:**\n")
+                
+                for link in links[:5]:
+                    response_text += f"• **[{link['name']}]({link['url']})**\n"
+                
+                # フッター（多言語対応）
+                footers = {
+                    'en': "\n💡 For local shopping recommendations, please feel free to ask our front desk staff!",
+                    'ko': "\n💡 현지 쇼핑 정보를 원하시면 프론트 직원에게 문의해주세요!",
+                    'zh': "\n💡 如需当地购物推荐，请随时咨询前台工作人员!",
+                    'tw': "\n💡 如需當地購物推薦，請隨時諮詢櫃檯工作人員!"
+                }
+                response_text += footers.get(language, "\n💡 地元のショッピング情報をお探しでしたら、フロントスタッフにもお気軽にお声がけください！")
+                response_type = "shopping_links"
+        
+        except Exception as e:
+            print(f"ショッピング検索エラー: {e}")
+            print(f"ショッピング検索エラー詳細: {type(e).__name__}: {str(e)}")
+            import traceback
+            print(f"ショッピング検索スタックトレース: {traceback.format_exc()}")
+            response_text = "申し訳ございません。現在ショッピング情報の取得でエラーが発生しています。"
+            response_type = "shopping_error"
+        
+        return {
+            "answer": response_text,
+            "confidence_score": 0.8,
+            "response_type": response_type,
+            "specialized_links": [],
+            "needs_human_support": False,
+            "location_enhanced": True
+        }
+    
+    def _handle_activity_specific_query(
+        self, faq_result: Dict, translated_input: str, location_info: Dict,
+        language: str, company_id: str, user_info: str
+    ) -> Dict:
+        """体験・アクティビティ専用クエリ処理"""
+        
+        UnifiedConfig.log_debug("アクティビティ専用クエリ処理開始")
+        
+        if not location_info:
+            # 多言語対応メッセージ
+            no_location_messages = {
+                'en': "🎯 **Activity Information:**\nPlease set your location to get detailed activity information.",
+                'ko': "🎯 **체험 정보:**\n위치를 설정하시면 더 자세한 체험 정보를 안내해드릴 수 있습니다.",
+                'zh': "🎯 **体验活动信息:**\n请设置您的位置，我们将为您提供更详细的体验活动信息。",
+                'tw': "🎯 **體驗活動資訊:**\n請設定您的位置，我們將為您提供更詳細的體驗活動資訊。"
+            }
+            message = no_location_messages.get(language, "🎯 **体験・アクティビティについて:**\n位置情報を設定していただくと、より詳しいアクティビティ情報をご案内できます。")
+            
+            return {
+                "answer": message,
+                "confidence_score": 0.5,
+                "response_type": "activity_no_location",
+                "specialized_links": [],
+                "needs_human_support": False,
+                "location_enhanced": False
+            }
+        
+        city_name = location_info.get('location', {}).get('city', '不明な地域')
+        
+        try:
+            # Google Places APIで体験・アクティビティ検索
+            google_places = self.google_places.search_activities(city_name, translated_input, language)
+            
+            if google_places:
+                # Google Places APIの結果を使用
+                response_text = format_google_places_response(google_places, city_name, "体験・アクティビティ", language)
+                response_type = "google_activity"
+            else:
+                # フォールバック: 専門リンク生成
+                links = self._generate_localized_links(
+                    translated_input, location_info['location'], 'activity', language
+                )
+                
+                # ヘッダー（多言語対応）
+                headers = {
+                    'en': f"🎯 **{city_name} Activity Information:**\n",
+                    'ko': f"🎯 **{city_name} 체험 정보:**\n",
+                    'zh': f"🎯 **{city_name}体验活动信息:**\n",
+                    'tw': f"🎯 **{city_name}體驗活動資訊:**\n"
+                }
+                response_text = headers.get(language, f"🎯 **{city_name}の体験・アクティビティ情報:**\n")
+                
+                for link in links[:5]:
+                    response_text += f"• **[{link['name']}]({link['url']})**\n"
+                
+                # フッター（多言語対応）
+                footers = {
+                    'en': "\n💡 For local activity recommendations, please feel free to ask our front desk staff!",
+                    'ko': "\n💡 현지 체험 정보를 원하시면 프론트 직원에게 문의해주세요!",
+                    'zh': "\n💡 如需当地体验活动推荐，请随时咨询前台工作人员!",
+                    'tw': "\n💡 如需當地體驗活動推薦，請隨時諮詢櫃檯工作人員!"
+                }
+                response_text += footers.get(language, "\n💡 地元の体験・アクティビティ情報をお探しでしたら、フロントスタッフにもお気軽にお声がけください！")
+                response_type = "activity_links"
+        
+        except Exception as e:
+            print(f"アクティビティ検索エラー: {e}")
+            print(f"アクティビティ検索エラー詳細: {type(e).__name__}: {str(e)}")
+            import traceback
+            print(f"アクティビティ検索スタックトレース: {traceback.format_exc()}")
+            response_text = "申し訳ございません。現在アクティビティ情報の取得でエラーが発生しています。"
+            response_type = "activity_error"
+        
+        return {
+            "answer": response_text,
+            "confidence_score": 0.8,
+            "response_type": response_type,
+            "specialized_links": [],
+            "needs_human_support": False,
+            "location_enhanced": True
+        }
