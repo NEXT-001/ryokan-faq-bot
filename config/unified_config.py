@@ -49,9 +49,11 @@ class UnifiedConfig:
     SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
     EMAIL_FROM = os.getenv("EMAIL_FROM", "noreply@example.com")
     
-    # ===== テストモード設定 =====
+    # ===== テストモード・ログレベル設定 =====
     TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
     DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()  # DEBUG, INFO, WARNING, ERROR
+    ENABLE_DEBUG_LOGS = os.getenv("ENABLE_DEBUG_LOGS", "false").lower() == "true"
     
     # ===== URL設定 =====
     BASE_URL = os.getenv("BASE_URL", "http://localhost:8501")
@@ -106,6 +108,37 @@ class UnifiedConfig:
     def is_debug_mode(cls):
         """デバッグモードかどうかを判定"""
         return cls.DEBUG_MODE
+    
+    @classmethod
+    def should_log_debug(cls):
+        """デバッグログを出力すべきかを判定"""
+        return cls.ENABLE_DEBUG_LOGS or cls.DEBUG_MODE
+    
+    @classmethod
+    def log_debug(cls, message):
+        """条件付きデバッグログ出力"""
+        if cls.should_log_debug():
+            print(f"[DEBUG] {message}")
+    
+    @classmethod
+    def log_info(cls, message):
+        """情報ログ出力"""
+        print(f"[INFO] {message}")
+    
+    @classmethod
+    def log_warning(cls, message):
+        """警告ログ出力"""
+        print(f"[WARNING] {message}")
+    
+    @classmethod
+    def log_error(cls, message):
+        """エラーログ出力"""
+        print(f"[ERROR] {message}")
+    
+    @classmethod
+    def use_advanced_logging(cls):
+        """高度なログシステムを使用するかどうか"""
+        return os.getenv("USE_ADVANCED_LOGGING", "true").lower() == "true"
     
     @classmethod
     def has_api_keys(cls):
