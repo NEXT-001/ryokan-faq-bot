@@ -100,7 +100,11 @@ def load_faq_data(company_id):
     """
     try:
         # データベースからFAQデータを取得（新しいものが上に表示されるようにDESC順）
-        query = "SELECT question, answer FROM faq_data WHERE company_id = ? ORDER BY created_at DESC"
+        from core.database import DB_TYPE
+        if DB_TYPE == "postgresql":
+            query = "SELECT question, answer FROM faq_data WHERE company_id = %s ORDER BY created_at DESC"
+        else:
+            query = "SELECT question, answer FROM faq_data WHERE company_id = ? ORDER BY created_at DESC"
         results = fetch_dict(query, (company_id,))
         
         if results:
@@ -177,7 +181,11 @@ def add_faq_with_translations(question, answer, company_id):
     
     try:
         # 重複チェック
-        check_query = "SELECT COUNT(*) as count FROM faq_data WHERE company_id = ? AND question = ?"
+        from core.database import DB_TYPE
+        if DB_TYPE == "postgresql":
+            check_query = "SELECT COUNT(*) as count FROM faq_data WHERE company_id = %s AND question = %s"
+        else:
+            check_query = "SELECT COUNT(*) as count FROM faq_data WHERE company_id = ? AND question = ?"
         result = fetch_dict_one(check_query, (company_id, question))
         if result and result['count'] > 0:
             return False, "同じ質問が既に登録されています。"
@@ -252,7 +260,11 @@ def add_faq(question, answer, company_id):
     
     try:
         # 重複チェック
-        check_query = "SELECT COUNT(*) as count FROM faq_data WHERE company_id = ? AND question = ?"
+        from core.database import DB_TYPE
+        if DB_TYPE == "postgresql":
+            check_query = "SELECT COUNT(*) as count FROM faq_data WHERE company_id = %s AND question = %s"
+        else:
+            check_query = "SELECT COUNT(*) as count FROM faq_data WHERE company_id = ? AND question = ?"
         result = fetch_dict_one(check_query, (company_id, question))
         if result and result['count'] > 0:
             return False, "同じ質問が既に登録されています。"
@@ -296,7 +308,11 @@ def update_faq(index, question, answer, company_id):
     
     try:
         # 指定されたインデックスのFAQ IDを取得（新しいものから順番）
-        query = "SELECT id FROM faq_data WHERE company_id = ? ORDER BY created_at DESC LIMIT 1 OFFSET ?"
+        from core.database import DB_TYPE
+        if DB_TYPE == "postgresql":
+            query = "SELECT id FROM faq_data WHERE company_id = %s ORDER BY created_at DESC LIMIT 1 OFFSET %s"
+        else:
+            query = "SELECT id FROM faq_data WHERE company_id = ? ORDER BY created_at DESC LIMIT 1 OFFSET ?"
         result = fetch_dict_one(query, (company_id, index))
         
         if not result:
@@ -336,7 +352,11 @@ def delete_faq(index, company_id):
     """
     try:
         # 指定されたインデックスのFAQ IDを取得（新しいものから順番）
-        query = "SELECT id FROM faq_data WHERE company_id = ? ORDER BY created_at DESC LIMIT 1 OFFSET ?"
+        from core.database import DB_TYPE
+        if DB_TYPE == "postgresql":
+            query = "SELECT id FROM faq_data WHERE company_id = %s ORDER BY created_at DESC LIMIT 1 OFFSET %s"
+        else:
+            query = "SELECT id FROM faq_data WHERE company_id = ? ORDER BY created_at DESC LIMIT 1 OFFSET ?"
         result = fetch_dict_one(query, (company_id, index))
         
         if not result:
@@ -379,7 +399,11 @@ def import_faq_from_csv(uploaded_file, company_id):
         imported_df = imported_df[["question", "answer"]].dropna()
         
         # 既存の質問を取得（重複チェック用）
-        existing_questions_query = "SELECT question FROM faq_data WHERE company_id = ?"
+        from core.database import DB_TYPE
+        if DB_TYPE == "postgresql":
+            existing_questions_query = "SELECT question FROM faq_data WHERE company_id = %s"
+        else:
+            existing_questions_query = "SELECT question FROM faq_data WHERE company_id = ?"
         existing_questions = fetch_dict(existing_questions_query, (company_id,))
         existing_question_set = {row['question'] for row in existing_questions}
         

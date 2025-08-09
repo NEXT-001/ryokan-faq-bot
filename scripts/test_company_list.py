@@ -72,16 +72,18 @@ def list_all_companies():
                 print(f"     - faq_history: {company['faq_history_count']}件")
                 
                 # faq_embeddingsもカウント
-                cursor.execute("""
+                from core.database import DB_TYPE
+                param_format = "%s" if DB_TYPE == "postgresql" else "?"
+                cursor.execute(f"""
                     SELECT COUNT(*) as count FROM faq_embeddings 
-                    WHERE faq_id IN (SELECT id FROM faq_data WHERE company_id = ?)
+                    WHERE faq_id IN (SELECT id FROM faq_data WHERE company_id = {param_format})
                 """, (company['id'],))
                 embedding_count = cursor.fetchone()['count']
                 print(f"     - faq_embeddings: {embedding_count}件")
                 
                 # ユーザー詳細
                 if company['user_count'] > 0:
-                    cursor.execute("SELECT email, is_verified FROM users WHERE company_id = ?", (company['id'],))
+                    cursor.execute(f"SELECT email, is_verified FROM users WHERE company_id = {param_format}", (company['id'],))
                     users = cursor.fetchall()
                     print("   ユーザー:")
                     for user in users:

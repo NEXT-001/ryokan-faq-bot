@@ -172,12 +172,21 @@ def create_embeddings_for_specific_faqs(company_id, faq_ids, show_progress=True)
     
     try:
         # 指定されたFAQのみを取得
-        placeholders = ','.join(['?' for _ in faq_ids])
-        query = f"""
-            SELECT id, company_id, question, answer, language, created_at, updated_at
-            FROM faq_data 
-            WHERE company_id = ? AND id IN ({placeholders})
-        """
+        from core.database import DB_TYPE
+        if DB_TYPE == "postgresql":
+            placeholders = ','.join(['%s' for _ in faq_ids])
+            query = f"""
+                SELECT id, company_id, question, answer, language, created_at, updated_at
+                FROM faq_data 
+                WHERE company_id = %s AND id IN ({placeholders})
+            """
+        else:
+            placeholders = ','.join(['?' for _ in faq_ids])
+            query = f"""
+                SELECT id, company_id, question, answer, language, created_at, updated_at
+                FROM faq_data 
+                WHERE company_id = ? AND id IN ({placeholders})
+            """
         params = [company_id] + faq_ids
         faq_data = fetch_dict(query, params)
         
@@ -219,11 +228,18 @@ def create_embeddings_for_specific_faqs(company_id, faq_ids, show_progress=True)
                 
                 # DBに保存
                 serialized_embedding = serialize_embedding(embedding)
-                update_query = """
-                    UPDATE faq_data 
-                    SET embedding = ? 
-                    WHERE id = ?
-                """
+                if DB_TYPE == "postgresql":
+                    update_query = """
+                        UPDATE faq_data 
+                        SET embedding = %s 
+                        WHERE id = %s
+                    """
+                else:
+                    update_query = """
+                        UPDATE faq_data 
+                        SET embedding = ? 
+                        WHERE id = ?
+                    """
                 execute_query(update_query, (serialized_embedding, faq['id']))
                 
             except Exception as e:

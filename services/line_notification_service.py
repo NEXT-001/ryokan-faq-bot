@@ -112,10 +112,12 @@ class LineNotificationService:
         """会社の担当者LINE ID一覧取得"""
         try:
             # companies テーブルから LINE ID を取得
-            query = """
+            from core.database import DB_TYPE
+            param_format = "%s" if DB_TYPE == "postgresql" else "?"
+            query = f"""
                 SELECT line_notification_id 
                 FROM companies 
-                WHERE company_id = ? AND line_notification_id IS NOT NULL
+                WHERE company_id = {param_format} AND line_notification_id IS NOT NULL
             """
             result = fetch_dict_one(query, (company_id,))
             

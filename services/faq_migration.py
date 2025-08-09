@@ -10,9 +10,13 @@ import sqlite3
 from datetime import datetime
 from core.database import (
     get_db_connection, execute_query, fetch_dict, fetch_dict_one,
-    initialize_database, table_exists
+    initialize_database, table_exists, DB_TYPE
 )
 from config.unified_config import UnifiedConfig
+
+def get_param_format():
+    """データベースタイプに応じたパラメータフォーマットを取得"""
+    return "%s" if DB_TYPE == "postgresql" else "?"
 
 def create_faq_tables():
     """FAQとエンベディング用のテーブルを作成"""
@@ -107,7 +111,8 @@ def migrate_company_faq_data(company_id, show_progress=False):
             return False
         
         # 既存データの削除（再移行対応）
-        execute_query("DELETE FROM faq_data WHERE company_id = ?", (company_id,))
+        param_format = get_param_format()
+        execute_query(f"DELETE FROM faq_data WHERE company_id = {param_format}", (company_id,))
         print(f"[MIGRATION] 既存データを削除: {company_id}")
         
         # データ移行処理
@@ -117,9 +122,9 @@ def migrate_company_faq_data(company_id, show_progress=False):
         for i, row in df.iterrows():
             try:
                 # FAQ基本データを挿入
-                query = """
+                query = f"""
                     INSERT INTO faq_data (company_id, question, answer, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES ({param_format}, {param_format}, {param_format}, {param_format}, {param_format})
                 """
                 current_time = datetime.now().isoformat()
                 
@@ -139,10 +144,10 @@ def migrate_company_faq_data(company_id, show_progress=False):
                     try:
                         serialized_embedding = serialize_embedding(row['embedding'])
                         if serialized_embedding:
-                            embedding_query = """
+                            embedding_query = f"""
                                 INSERT INTO faq_embeddings 
                                 (faq_id, embedding_vector, vector_model, embedding_dim, created_at, updated_at)
-                                VALUES (?, ?, ?, ?, ?, ?)
+                                VALUES ({param_format}, {param_format}, {param_format}, {param_format}, {param_format}, {param_format})
                             """
                             execute_query(embedding_query, (
                                 faq_id,
@@ -286,15 +291,16 @@ def verify_migration(company_id):
     """移行結果を検証"""
     try:
         # DBからFAQデータを取得
-        faq_query = "SELECT COUNT(*) FROM faq_data WHERE company_id = ?"
+        param_format = get_param_format()
+        faq_query = f"SELECT COUNT(*) FROM faq_data WHERE company_id = {param_format}"
         faq_result = fetch_dict_one(faq_query, (company_id,))
         faq_count = faq_result['COUNT(*)'] if faq_result else 0
         
         # エンベディング数を取得
-        embedding_query = """
+        embedding_query = f"""
             SELECT COUNT(*) FROM faq_embeddings fe 
             JOIN faq_data fd ON fe.faq_id = fd.id 
-            WHERE fd.company_id = ?
+            WHERE fd.company_id = {param_format}
         """
         embedding_result = fetch_dict_one(embedding_query, (company_id,))
         embedding_count = embedding_result['COUNT(*)'] if embedding_result else 0

@@ -248,14 +248,27 @@ class AuthService:
             # 有効期限を過ぎたトークンを検索
             expiry_time = datetime.now() - timedelta(hours=UnifiedConfig.TOKEN_EXPIRY_HOURS)
             
+            from core.database import DB_TYPE
+            
             with get_cursor() as cursor:
                 # 期限切れの未認証ユーザーを削除
-                cursor.execute("""
-                    DELETE FROM users 
-                    WHERE is_verified = 0 
-                    AND verify_token IS NOT NULL 
-                    AND created_at < ?
-                """, (expiry_time.isoformat(),))
+                if DB_TYPE == "postgresql":
+                    # PostgreSQLでcreated_atがtextの場合に対応
+                    query = """
+                        DELETE FROM users 
+                        WHERE is_verified = 0 
+                        AND verify_token IS NOT NULL 
+                        AND created_at < %s
+                    """
+                    cursor.execute(query, (expiry_time.isoformat(),))
+                else:
+                    query = """
+                        DELETE FROM users 
+                        WHERE is_verified = 0 
+                        AND verify_token IS NOT NULL 
+                        AND created_at < ?
+                    """
+                    cursor.execute(query, (expiry_time.isoformat(),))
                 
                 deleted_count = cursor.rowcount
                 
