@@ -241,32 +241,28 @@ class AuthService:
 
     @staticmethod
     def cleanup_expired_tokens():
-        """期限切れの認証トークンを削除"""
-        db_name = get_db_path()
-        
+        """期限切れの認証トークンを削除（データベースロック対応版）"""
         try:
-            conn = sqlite3.connect(db_name)
-            c = conn.cursor()
+            from core.database import get_cursor
             
             # 有効期限を過ぎたトークンを検索
             expiry_time = datetime.now() - timedelta(hours=UnifiedConfig.TOKEN_EXPIRY_HOURS)
             
-            # 期限切れの未認証ユーザーを削除
-            c.execute("""
-                DELETE FROM users 
-                WHERE is_verified = 0 
-                AND verify_token IS NOT NULL 
-                AND created_at < ?
-            """, (expiry_time.isoformat(),))
-            
-            deleted_count = c.rowcount
-            conn.commit()
-            conn.close()
-            
-            if deleted_count > 0:
-                print(f"[AUTH_SERVICE] 期限切れトークン {deleted_count} 件を削除")
-            
-            return deleted_count
+            with get_cursor() as cursor:
+                # 期限切れの未認証ユーザーを削除
+                cursor.execute("""
+                    DELETE FROM users 
+                    WHERE is_verified = 0 
+                    AND verify_token IS NOT NULL 
+                    AND created_at < ?
+                """, (expiry_time.isoformat(),))
+                
+                deleted_count = cursor.rowcount
+                
+                if deleted_count > 0:
+                    print(f"[AUTH_SERVICE] 期限切れトークン {deleted_count} 件を削除")
+                
+                return deleted_count
             
         except Exception as e:
             print(f"[AUTH_SERVICE] トークンクリーンアップエラー: {e}")
