@@ -73,8 +73,13 @@ def show_debug_info():
 
 def route_application():
     """アプリケーションのルーティングメイン処理"""
-    # 期限切れトークンの定期クリーンアップ（アプリ起動時に実行）
-    cleanup_expired_tokens()
+    # 期限切れトークンのクリーンアップ（セッションごとに1回のみ実行）
+    if 'token_cleanup_done' not in st.session_state:
+        try:
+            cleanup_expired_tokens()
+            st.session_state['token_cleanup_done'] = True
+        except Exception as e:
+            print(f"[APP_ROUTER] トークンクリーンアップスキップ: {e}")
     
     # URLパラメータを取得
     mode, company_id, url_logged_in = UnifiedConfig.get_url_params()

@@ -19,7 +19,7 @@ def get_db_path():
     return os.path.join(base_dir, UnifiedConfig.DB_NAME)
 
 def get_db_connection():
-    """データベース接続を取得（スレッドセーフ）"""
+    """データベース接続を取得（スレッドセーフ・改良版）"""
     if not hasattr(_local, 'connection') or _local.connection is None:
         db_path = get_db_path()
         
@@ -29,9 +29,16 @@ def get_db_connection():
         _local.connection = sqlite3.connect(
             db_path,
             check_same_thread=False,
-            timeout=30.0
+            timeout=60.0,  # タイムアウト延長
+            isolation_level=None  # autocommitモード
         )
         _local.connection.row_factory = sqlite3.Row  # 辞書ライクなアクセス
+        
+        # SQLiteの並行性を改善
+        _local.connection.execute("PRAGMA journal_mode = WAL")  # WALモード
+        _local.connection.execute("PRAGMA synchronous = NORMAL")  # パフォーマンス向上
+        _local.connection.execute("PRAGMA cache_size = 10000")  # キャッシュサイズ増加
+        _local.connection.execute("PRAGMA temp_store = MEMORY")  # メモリ使用
         
         # 外部キー制約を有効化
         _local.connection.execute("PRAGMA foreign_keys = ON")

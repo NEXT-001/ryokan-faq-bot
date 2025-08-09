@@ -7,6 +7,7 @@ from utils.db_utils import init_db, register_user
 from services.enhanced_location_service import EnhancedLocationService
 from utils.streamlit_optimization import StreamlitOptimizer, FormValidator
 from config.unified_config import UnifiedConfig
+from utils.ip_restriction import check_ip_restriction, display_ip_restriction_error
 
 
 def hide_entire_sidebar():
@@ -34,6 +35,22 @@ def registration_page():
     """登録ページ（mode=reg）- 会社ID自動生成版"""
     # サイドバー全体を非表示
     hide_entire_sidebar()
+    
+    # IPアドレス制限チェック
+    is_allowed, message, country_code = check_ip_restriction()
+    
+    if not is_allowed:
+        # アクセスが制限されている場合
+        display_ip_restriction_error()
+        return
+    else:
+        # デバッグ情報（開発時のみ表示）
+        try:
+            if country_code and st.secrets.get("DEBUG_MODE", False):
+                st.info(f"🌍 アクセス許可: {country_code}")
+        except:
+            # secrets.tomlが存在しない場合はスキップ
+            pass
     
     st.title("FAQチャットボットシステム")
     st.subheader("14日間無料お試し登録")
