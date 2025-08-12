@@ -5,7 +5,6 @@ services/auth_service.py
 ログイン、認証、ユーザー管理の統合モジュール
 """
 import streamlit as st
-import sqlite3
 import smtplib
 import uuid
 import os
@@ -194,7 +193,7 @@ class AuthService:
     @staticmethod
     def verify_user_token(token):
         """
-        メール認証トークンを検証
+        メール認証トークンを検証（PostgreSQL対応版）
         
         Args:
             token (str): 認証トークン
@@ -202,37 +201,43 @@ class AuthService:
         Returns:
             tuple: (成功したかどうか, 会社ID, メールアドレス)
         """
-        db_name = get_db_path()
-        
         try:
-            conn = sqlite3.connect(db_name)
-            c = conn.cursor()
+            from core.database import DB_TYPE, get_cursor, fetch_dict_one
             
             # 有効期限をチェックしてトークンを検証
             expiry_time = datetime.now() - timedelta(hours=UnifiedConfig.TOKEN_EXPIRY_HOURS)
-            c.execute("""
+            param_format = "%s" if DB_TYPE == "postgresql" else "?"
+            
+            query = f"""
                 SELECT id, company_id, email, created_at 
                 FROM users 
-                WHERE verify_token = ? AND is_verified = 0
-            """, (token,))
-            user = c.fetchone()
+                WHERE verify_token = {param_format} AND is_verified = 0
+            """
+            user = fetch_dict_one(query, (token,))
 
             if user:
-                user_id, company_id, email, created_at = user
-                created_datetime = datetime.fromisoformat(created_at)
+                user_id = user['id']
+                company_id = user['company_id']
+                email = user['email']
+                created_at = user['created_at']
+                
+                # 日付の処理
+                if isinstance(created_at, str):
+                    created_datetime = datetime.fromisoformat(created_at)
+                else:
+                    created_datetime = created_at
                 
                 # トークンの有効期限をチェック
                 if created_datetime < expiry_time:
-                    conn.close()
                     return False, None, None  # トークンが期限切れ
                 
                 # 有効なトークンの場合、認証を完了してトークンを削除
-                c.execute("UPDATE users SET is_verified = 1, verify_token = NULL WHERE id = ?", (user_id,))
-                conn.commit()
-                conn.close()
+                with get_cursor() as cursor:
+                    update_query = f"UPDATE users SET is_verified = 1, verify_token = NULL WHERE id = {param_format}"
+                    cursor.execute(update_query, (user_id,))
+                    
                 return True, company_id, email
             
-            conn.close()
             return False, None, None
             
         except Exception as e:

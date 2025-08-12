@@ -9,6 +9,8 @@ import re
 from typing import Dict, List, Optional, Tuple
 import anthropic
 from dotenv import load_dotenv
+from config.unified_config import UnifiedConfig
+from core.singleton_base import SingletonService
 
 # 動的インポートをモジュールレベルに移動（パフォーマンス改善）
 try:
@@ -27,8 +29,9 @@ except ImportError:
 
 load_dotenv()
 
-class TranslationService:
-    def __init__(self):
+class TranslationService(SingletonService):
+    def _initialize(self):
+        
         self.anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
         self.google_api_key = os.getenv('GOOGLE_API_KEY')  # Google Cloud Translation API Key
         
@@ -55,18 +58,18 @@ class TranslationService:
                     # サービスアカウントファイルを使用（接続テストはしない）
                     self.google_translate_client = translate.Client()
                     self.google_available = True  # 初期化成功時にTrueに設定
-                    print("[TRANSLATION] Google Cloud Translation API クライアント初期化完了")
-                    print("[TRANSLATION] ✅ プライマリ翻訳エンジン: Google翻訳")
+                    UnifiedConfig.log_service_init("TRANSLATION", "Google Cloud Translation API クライアント初期化完了")
+                    UnifiedConfig.log_service_init("TRANSLATION", "✅ プライマリ翻訳エンジン: Google翻訳")
                         
                 elif google_credentials_path:
-                    print(f"[TRANSLATION] Google認証ファイルが見つかりません: {google_credentials_path}")
-                    print("[TRANSLATION] ❌ Google翻訳は利用できません。Anthropic翻訳をフォールバックとして使用します。")
+                    UnifiedConfig.log_warning(f"Google認証ファイルが見つかりません: {google_credentials_path}")
+                    UnifiedConfig.log_info("❌ Google翻訳は利用できません。Anthropic翻訳をフォールバックとして使用します")
                 else:
-                    print("[TRANSLATION] GOOGLE_APPLICATION_CREDENTIALS が設定されていません")
-                    print("[TRANSLATION] ❌ Google翻訳は利用できません。Anthropic翻訳をフォールバックとして使用します。")
+                    UnifiedConfig.log_warning("GOOGLE_APPLICATION_CREDENTIALS が設定されていません")
+                    UnifiedConfig.log_info("❌ Google翻訳は利用できません。Anthropic翻訳をフォールバックとして使用します")
                     
             except Exception as e:
-                print(f"[TRANSLATION] Google Cloud Translation API 初期化エラー: {e}")
+                UnifiedConfig.log_error(f"Google Cloud Translation API 初期化エラー: {e}")
                 self.google_translate_client = None
                 self.google_available = False
         
@@ -80,6 +83,8 @@ class TranslationService:
             'zh-tw': '中国語（繁体字）',
             'tw': '中国語（繁体字）'  # 独立した繁体字サポート
         }
+        
+        pass  # 初期化完了ログはベースクラスで処理される
     
     def _lazy_validate_google(self) -> bool:
         """遅延Google接続検証（初回使用時のみ）"""
@@ -130,10 +135,10 @@ class TranslationService:
         # 翻訳キャッシュチェック（最高速化）
         cache_key = f"{text.strip()}->ja"
         if cache_key in self._translation_cache:
-            print(f"[TRANSLATION] キャッシュヒット: '{text}'")
+            UnifiedConfig.log_debug(f"翻訳キャッシュヒット: '{text}'")
             return self._translation_cache[cache_key]
         
-        print(f"[TRANSLATION] 入力テキスト: '{text}'")
+        UnifiedConfig.log_debug(f"翻訳入力テキスト: '{text}'")
         
         try:
             # 強化された言語検出を使用（モジュールレベルインポート）
@@ -143,10 +148,13 @@ class TranslationService:
                 confidence = detection_result['confidence']
             else:
                 # フォールバック処理
-                print(f"[TRANSLATION] 強化言語検出が利用できません、フォールバックします")
+                UnifiedConfig.log_warning("強化言語検出が利用できません、フォールバックします")
                 return self._fallback_detect_and_translate(text)
             
-            print(f"[TRANSLATION] 言語検出: {detected_language} (信頼度: {confidence:.2f}, 方法: {detection_result.get('method', 'unknown')})")
+            UnifiedConfig.log_language_detection(
+                text, detected_language, confidence, 
+                detection_result.get('method', 'unknown')
+            )
             
             # 日本語の場合は翻訳不要
             if detected_language == 'ja':
@@ -156,7 +164,7 @@ class TranslationService:
             
             # 信頼度が低い場合のフォールバック
             if confidence < 0.4:  # 閾値を下げて高速化
-                print(f"[TRANSLATION] 低信頼度({confidence:.2f})フォールバック")
+                UnifiedConfig.log_info(f"低信頼度({confidence:.2f})フォールバック")
                 result = self._fallback_detect_and_translate(text)
                 self._add_to_translation_cache(cache_key, result)
                 return result
@@ -169,7 +177,7 @@ class TranslationService:
             return result
                 
         except Exception as e:
-            print(f"[TRANSLATION] 言語検出・翻訳エラー: {e}")
+            UnifiedConfig.log_error(f"言語検出・翻訳エラー: {e}")
             # エラー時はフォールバック
             result = self._fallback_detect_and_translate(text)
             self._add_to_translation_cache(cache_key, result)

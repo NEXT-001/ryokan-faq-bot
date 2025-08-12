@@ -24,19 +24,33 @@ def create_faq_tables():
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # FAQテーブル（既存のfaq_dataテーブルを拡張）
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS faq_embeddings (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    faq_id INTEGER NOT NULL,
-                    embedding_vector BLOB NOT NULL,
-                    vector_model TEXT DEFAULT 'voyage-3',
-                    embedding_dim INTEGER DEFAULT 1024,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (faq_id) REFERENCES faq_data (id) ON DELETE CASCADE
-                )
-            """)
+            # データベース別のSQL文を準備
+            if DB_TYPE == "postgresql":
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS faq_embeddings (
+                        id SERIAL PRIMARY KEY,
+                        faq_id INTEGER NOT NULL,
+                        embedding_vector BYTEA NOT NULL,
+                        vector_model TEXT DEFAULT 'voyage-3',
+                        embedding_dim INTEGER DEFAULT 1024,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (faq_id) REFERENCES faq_data (id) ON DELETE CASCADE
+                    )
+                """)
+            else:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS faq_embeddings (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        faq_id INTEGER NOT NULL,
+                        embedding_vector BLOB NOT NULL,
+                        vector_model TEXT DEFAULT 'voyage-3',
+                        embedding_dim INTEGER DEFAULT 1024,
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (faq_id) REFERENCES faq_data (id) ON DELETE CASCADE
+                    )
+                """)
             
             # インデックス作成
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_faq_embeddings_faq_id ON faq_embeddings(faq_id)")
@@ -337,7 +351,8 @@ def verify_migration(company_id):
 def get_faq_data_from_db(company_id):
     """DBからFAQデータを取得（エンベディング付き）"""
     try:
-        query = """
+        param_format = get_param_format()
+        query = f"""
             SELECT 
                 fd.id,
                 fd.question,
@@ -349,7 +364,7 @@ def get_faq_data_from_db(company_id):
                 fe.embedding_dim
             FROM faq_data fd
             LEFT JOIN faq_embeddings fe ON fd.id = fe.faq_id
-            WHERE fd.company_id = ?
+            WHERE fd.company_id = {param_format}
             ORDER BY fd.id
         """
         
@@ -374,25 +389,40 @@ def save_faq_to_db(company_id, question, answer, embedding=None):
     """新しいFAQをDBに保存"""
     try:
         # FAQ基本データを保存
-        faq_query = """
+        param_format = get_param_format()
+        faq_query = f"""
             INSERT INTO faq_data (company_id, question, answer, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES ({param_format}, {param_format}, {param_format}, {param_format}, {param_format})
         """
         current_time = datetime.now().isoformat()
         
-        cursor = get_db_connection().cursor()
-        cursor.execute(faq_query, (company_id, question, answer, current_time, current_time))
-        faq_id = cursor.lastrowid
-        cursor.close()
+        # PostgreSQL対応のID取得
+        if DB_TYPE == "postgresql":
+            # execute_queryを使ってRETURNING句で直接IDを取得
+            id_query = f"""
+                INSERT INTO faq_data (company_id, question, answer, created_at, updated_at)
+                VALUES ({param_format}, {param_format}, {param_format}, {param_format}, {param_format})
+                RETURNING id
+            """
+            from core.database import fetch_dict_one
+            result = fetch_dict_one(id_query, (company_id, question, answer, current_time, current_time))
+            faq_id = result['id'] if result else None
+        else:
+            execute_query(faq_query, (company_id, question, answer, current_time, current_time))
+            # 最後に挿入されたIDを取得
+            from core.database import fetch_dict_one
+            last_id_query = "SELECT last_insert_rowid() as id"
+            result = fetch_dict_one(last_id_query)
+            faq_id = result['id'] if result else None
         
         # エンベディングがある場合は保存
-        if embedding is not None:
+        if embedding is not None and faq_id:
             serialized_embedding = serialize_embedding(embedding)
             if serialized_embedding:
-                embedding_query = """
+                embedding_query = f"""
                     INSERT INTO faq_embeddings 
                     (faq_id, embedding_vector, vector_model, embedding_dim, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES ({param_format}, {param_format}, {param_format}, {param_format}, {param_format}, {param_format})
                 """
                 execute_query(embedding_query, (
                     faq_id,
@@ -421,15 +451,16 @@ def update_faq_in_db(faq_id, question=None, answer=None, embedding=None):
         current_time = datetime.now().isoformat()
         
         # FAQ基本データを更新
+        param_format = get_param_format()
         if question is not None or answer is not None:
             if question is not None and answer is not None:
-                faq_query = "UPDATE faq_data SET question = ?, answer = ?, updated_at = ? WHERE id = ?"
+                faq_query = f"UPDATE faq_data SET question = {param_format}, answer = {param_format}, updated_at = {param_format} WHERE id = {param_format}"
                 execute_query(faq_query, (question, answer, current_time, faq_id))
             elif question is not None:
-                faq_query = "UPDATE faq_data SET question = ?, updated_at = ? WHERE id = ?"
+                faq_query = f"UPDATE faq_data SET question = {param_format}, updated_at = {param_format} WHERE id = {param_format}"
                 execute_query(faq_query, (question, current_time, faq_id))
             else:
-                faq_query = "UPDATE faq_data SET answer = ?, updated_at = ? WHERE id = ?"
+                faq_query = f"UPDATE faq_data SET answer = {param_format}, updated_at = {param_format} WHERE id = {param_format}"
                 execute_query(faq_query, (answer, current_time, faq_id))
         
         # エンベディングを更新
@@ -437,15 +468,15 @@ def update_faq_in_db(faq_id, question=None, answer=None, embedding=None):
             serialized_embedding = serialize_embedding(embedding)
             if serialized_embedding:
                 # 既存エンベディングの確認
-                check_query = "SELECT id FROM faq_embeddings WHERE faq_id = ?"
+                check_query = f"SELECT id FROM faq_embeddings WHERE faq_id = {param_format}"
                 existing = fetch_dict_one(check_query, (faq_id,))
                 
                 if existing:
                     # 更新
-                    embedding_query = """
+                    embedding_query = f"""
                         UPDATE faq_embeddings 
-                        SET embedding_vector = ?, embedding_dim = ?, updated_at = ?
-                        WHERE faq_id = ?
+                        SET embedding_vector = {param_format}, embedding_dim = {param_format}, updated_at = {param_format}
+                        WHERE faq_id = {param_format}
                     """
                     execute_query(embedding_query, (
                         serialized_embedding,
@@ -455,10 +486,10 @@ def update_faq_in_db(faq_id, question=None, answer=None, embedding=None):
                     ))
                 else:
                     # 新規作成
-                    embedding_query = """
+                    embedding_query = f"""
                         INSERT INTO faq_embeddings 
                         (faq_id, embedding_vector, vector_model, embedding_dim, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        VALUES ({param_format}, {param_format}, {param_format}, {param_format}, {param_format}, {param_format})
                     """
                     execute_query(embedding_query, (
                         faq_id,
@@ -480,7 +511,8 @@ def delete_faq_from_db(faq_id):
     """FAQをDBから削除（エンベディングも含む）"""
     try:
         # 外部キー制約により、faq_embeddingsは自動削除される
-        execute_query("DELETE FROM faq_data WHERE id = ?", (faq_id,))
+        param_format = get_param_format()
+        execute_query(f"DELETE FROM faq_data WHERE id = {param_format}", (faq_id,))
         print(f"[MIGRATION] FAQ削除完了 (ID: {faq_id})")
         return True
         

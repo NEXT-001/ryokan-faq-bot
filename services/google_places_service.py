@@ -210,7 +210,7 @@ class GooglePlacesService:
         """
         formatted_results = []
         
-        for place in results[:5]:  # 上位5件
+        for place in results[:10]:  # 上位10件
             try:
                 # 基本情報
                 name = place.get('name', '不明')
@@ -590,7 +590,7 @@ def format_google_places_response(places: List[Dict], location: str, query_type:
     
     response = headers.get(language, headers['ja'])
     
-    for i, place in enumerate(places[:5], 1):
+    for i, place in enumerate(places[:10], 1):
         name = place['name']  # 店名は翻訳しない
         rating = place['rating']
         address = place['address']  # 住所は翻訳しない
@@ -688,7 +688,7 @@ def format_google_places_response(places: List[Dict], location: str, query_type:
             
             if data.get('status') == 'OK' and data.get('results'):
                 print(f"[GOOGLE_PLACES] ショッピング検索成功: {len(data['results'])}件")
-                return self._process_places_results(data['results'][:5])
+                return self._process_places_results(data['results'][:10])
             else:
                 print(f"[GOOGLE_PLACES] ショッピング検索結果なし: status={data.get('status')}")
                 return []
@@ -737,7 +737,7 @@ def format_google_places_response(places: List[Dict], location: str, query_type:
             
             if data.get('status') == 'OK' and data.get('results'):
                 print(f"[GOOGLE_PLACES] アクティビティ検索成功: {len(data['results'])}件")
-                return self._process_places_results(data['results'][:5])
+                return self._process_places_results(data['results'][:10])
             else:
                 print(f"[GOOGLE_PLACES] アクティビティ検索結果なし: status={data.get('status')}")
                 return []
@@ -745,3 +745,15 @@ def format_google_places_response(places: List[Dict], location: str, query_type:
         except Exception as e:
             print(f"[GOOGLE_PLACES] アクティビティ検索エラー: {e}")
             return []
+    
+    def _process_places_results(self, results: List[Dict]) -> List[Dict]:
+        """
+        Google Places APIの結果を処理して統一フォーマットに変換
+        
+        Args:
+            results: Google Places APIの生結果
+            
+        Returns:
+            List[Dict]: 処理済み結果
+        """
+        return self._format_places_results(results, 'general')

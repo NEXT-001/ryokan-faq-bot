@@ -6,6 +6,7 @@ import urllib.parse
 from typing import Dict, List, Optional
 import pandas as pd
 import os
+from config.unified_config import UnifiedConfig
 
 class SpecializedLinkService:
     def __init__(self):
@@ -14,7 +15,7 @@ class SpecializedLinkService:
             from services.translation_service import TranslationService
             self.translation_service = TranslationService()
         except ImportError:
-            print("[SPECIALIZED_LINK] 翻訳サービスが利用できません")
+            UnifiedConfig.log_warning("翻訳サービスが利用できません")
             self.translation_service = None
         
         # 観光情報専門サイト（信頼度順）
@@ -126,7 +127,7 @@ class SpecializedLinkService:
         
         # 韓国の都市の場合は国際対応サイトのみ
         if location.get('region') == '韓国':
-            print(f"[SPECIALIZED_LINK] 韓国都市のため国際対応サイトのみを使用")
+            UnifiedConfig.log_debug("韓国都市のため国際対応サイトのみを使用")
             if intent_type == 'tourism':
                 sites = [site for site in self.tourism_sites 
                         if site['name'] in ['Google Maps'] 
@@ -170,8 +171,8 @@ class SpecializedLinkService:
                 activity_sites = [site for site in self.activity_sites if language in site['languages']]
                 sites = sorted(tourism_sites + restaurant_sites + shopping_sites + activity_sites, key=lambda x: x['priority'])
         
-        # 上位5サイトのリンクを生成
-        for site in sites[:5]:
+        # 上位10サイトのリンクを生成
+        for site in sites[:10]:
             try:
                 url = self._build_search_url(site, query, location, language)
                 if url:
@@ -190,25 +191,25 @@ class SpecializedLinkService:
     
     def _build_search_url(self, site: Dict, query: str, location: Dict, language: str) -> Optional[str]:
         """検索URLを構築"""
-        print(f"[SPECIALIZED_LINK] URL構築開始 - site: {site['name']}, location: {location}")
+        UnifiedConfig.log_debug(f"URL構築開始 - site: {site['name']}, location: {location}")
         try:
             base_url = site['base_url']
             pattern = site['search_pattern']
             
             # 外国語のクエリを日本語に翻訳（URL用）
             japanese_query = self._translate_query_to_japanese(query, language)
-            print(f"[SPECIALIZED_LINK] URL用クエリ翻訳: '{query}' → '{japanese_query}'")
+            UnifiedConfig.log_debug(f"URL用クエリ翻訳: '{query}' → '{japanese_query}'")
             
             # 翻訳されたクエリをURLエンコード
             encoded_query = urllib.parse.quote(japanese_query)
             
             # 位置情報から地域コードを取得
             area_code = self._get_area_code(location, site['name'])
-            print(f"[SPECIALIZED_LINK] area_code: {area_code} for {site['name']}")
+            UnifiedConfig.log_debug(f"area_code: {area_code} for {site['name']}")
             
             # 韓国の都市の場合は日本の観光サイトをスキップ
             if location.get('region') == '韓国' and site['name'] in ['じゃらんnet', 'ぐるなび', '食べログ', 'TripAdvisor', 'るるぶ']:
-                print(f"[SPECIALIZED_LINK] 韓国の都市のため{site['name']}をスキップ")
+                UnifiedConfig.log_debug(f"韓国の都市のため{site['name']}をスキップ")
                 return None
             
             # パターンに応じてURL生成
@@ -260,7 +261,7 @@ class SpecializedLinkService:
         prefecture = location.get('prefecture', '')
         region = location.get('region', '')
         
-        print(f"[SPECIALIZED_LINK] Google Maps URL構築: city={city}, prefecture={prefecture}, region={region}")
+        UnifiedConfig.log_debug(f"Google Maps URL構築: city={city}, prefecture={prefecture}, region={region}")
         
         # 韓国の都市の場合
         if region == '韓国':
@@ -283,7 +284,7 @@ class SpecializedLinkService:
         
         # Google Mapsの検索URL
         encoded_location = urllib.parse.quote(location_str)
-        print(f"[SPECIALIZED_LINK] Google Maps URL: {query}+{location_str}")
+        UnifiedConfig.log_debug(f"Google Maps URL: {query}+{location_str}")
         return f"https://www.google.com/maps/search/{query}+{encoded_location}"
     
     def _build_tabelog_url(self, query: str, location: Dict) -> str:
@@ -526,15 +527,15 @@ class SpecializedLinkService:
         
         # 翻訳サービスが利用できない場合はそのまま返す
         if not self.translation_service:
-            print(f"[SPECIALIZED_LINK] 翻訳サービス利用不可、元のクエリを使用: '{query}'")
+            UnifiedConfig.log_info(f"翻訳サービス利用不可、元のクエリを使用: '{query}'")
             return query
         
         try:
             # キーワードを日本語に翻訳
             japanese_query = self.translation_service.translate_text(query, 'ja', language)
-            print(f"[SPECIALIZED_LINK] クエリ翻訳: '{query}' ({language}) → '{japanese_query}' (ja)")
+            UnifiedConfig.log_debug(f"クエリ翻訳: '{query}' ({language}) → '{japanese_query}' (ja)")
             return japanese_query
         except Exception as e:
-            print(f"[SPECIALIZED_LINK] クエリ翻訳エラー: {e}")
+            UnifiedConfig.log_error(f"クエリ翻訳エラー: {e}")
             # エラー時は元のクエリを返す
             return query

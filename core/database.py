@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from config.unified_config import UnifiedConfig
 from utils.auth_utils import hash_password
+from core.singleton_base import SingletonService
 
 import sqlite3
 
@@ -18,10 +19,85 @@ try:
     DB_TYPE = "postgresql"
 except ImportError:
     DB_TYPE = "sqlite"
-    print("[DATABASE] PostgreSQL未インストール、SQLiteを使用します")
+    UnifiedConfig.log_info("PostgreSQL未インストール、SQLiteを使用します")
 
-# スレッドローカルストレージ
-_local = threading.local()
+
+class DatabaseManager(SingletonService):
+    """データベース管理シングルトンクラス"""
+    
+    def __init__(self):
+        self._connection = None
+        self._local = threading.local()
+        super().__init__()
+    
+    def _initialize(self):
+        """データベース接続の初期化"""
+        pass  # 接続は遅延初期化
+    
+    def get_connection(self):
+        """データベース接続を取得（シングルトン + スレッドローカル）"""
+        if not hasattr(self._local, 'connection') or self._local.connection is None:
+            self._create_connection()
+        return self._local.connection
+    
+    def _create_connection(self):
+        """データベース接続を作成"""
+        global DB_TYPE
+        
+        # スレッドローカルの接続初期化フラグ
+        if not hasattr(self._local, 'initialized'):
+            self._local.initialized = False
+        
+        if DB_TYPE == "postgresql":
+            config = get_db_config()
+            try:
+                self._local.connection = psycopg2.connect(
+                    host=config['host'],
+                    port=config['port'],
+                    database=config['database'],
+                    user=config['user'],
+                    password=config['password'],
+                    connect_timeout=60
+                )
+                self._local.connection.autocommit = True
+                if not self._local.initialized:
+                    UnifiedConfig.log_service_init("DATABASE", f"PostgreSQL接続作成: {config['host']}:{config['port']}/{config['database']}")
+                    self._local.initialized = True
+            except Exception as e:
+                if not self._local.initialized:
+                    UnifiedConfig.log_warning(f"PostgreSQL接続エラー: {e}")
+                    UnifiedConfig.log_info("SQLiteにフォールバック")
+                # PostgreSQL接続失敗時はSQLiteにフォールバック
+                DB_TYPE = "sqlite"
+                
+        if DB_TYPE == "sqlite":
+            db_path = get_db_config()
+            
+            # ディレクトリが存在しない場合は作成
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            
+            self._local.connection = sqlite3.connect(
+                db_path,
+                check_same_thread=False,
+                timeout=60.0,
+                isolation_level=None  # autocommitモード
+            )
+            self._local.connection.row_factory = sqlite3.Row
+            
+            # SQLiteの並行性を改善
+            self._local.connection.execute("PRAGMA journal_mode = WAL")
+            self._local.connection.execute("PRAGMA synchronous = NORMAL")
+            self._local.connection.execute("PRAGMA cache_size = 10000")
+            self._local.connection.execute("PRAGMA temp_store = MEMORY")
+            self._local.connection.execute("PRAGMA foreign_keys = ON")
+            
+            if not self._local.initialized:
+                UnifiedConfig.log_service_init("DATABASE", f"SQLite接続作成: {db_path}")
+                self._local.initialized = True
+
+
+# グローバルインスタンス
+_db_manager = DatabaseManager()
 
 def get_db_config():
     """データベース接続設定を取得"""
@@ -39,53 +115,8 @@ def get_db_config():
         return os.path.join(base_dir, UnifiedConfig.DB_NAME)
 
 def get_db_connection():
-    """データベース接続を取得（PostgreSQL/SQLite対応）"""
-    global DB_TYPE
-    
-    if not hasattr(_local, 'connection') or _local.connection is None:
-        if DB_TYPE == "postgresql":
-            config = get_db_config()
-            try:
-                _local.connection = psycopg2.connect(
-                    host=config['host'],
-                    port=config['port'],
-                    database=config['database'],
-                    user=config['user'],
-                    password=config['password'],
-                    connect_timeout=60
-                )
-                _local.connection.autocommit = True
-                print(f"[DATABASE] PostgreSQL接続作成: {config['host']}:{config['port']}/{config['database']}")
-            except Exception as e:
-                print(f"[DATABASE] PostgreSQL接続エラー: {e}")
-                print("[DATABASE] SQLiteにフォールバック")
-                # PostgreSQL接続失敗時はSQLiteにフォールバック
-                DB_TYPE = "sqlite"
-                
-        if DB_TYPE == "sqlite":
-            db_path = get_db_config()
-            
-            # ディレクトリが存在しない場合は作成
-            os.makedirs(os.path.dirname(db_path), exist_ok=True)
-            
-            _local.connection = sqlite3.connect(
-                db_path,
-                check_same_thread=False,
-                timeout=60.0,
-                isolation_level=None  # autocommitモード
-            )
-            _local.connection.row_factory = sqlite3.Row
-            
-            # SQLiteの並行性を改善
-            _local.connection.execute("PRAGMA journal_mode = WAL")
-            _local.connection.execute("PRAGMA synchronous = NORMAL")
-            _local.connection.execute("PRAGMA cache_size = 10000")
-            _local.connection.execute("PRAGMA temp_store = MEMORY")
-            _local.connection.execute("PRAGMA foreign_keys = ON")
-            
-            print(f"[DATABASE] SQLite接続作成: {db_path}")
-    
-    return _local.connection
+    """データベース接続を取得（シングルトン経由）"""
+    return _db_manager.get_connection()
 
 @contextmanager
 def get_cursor():
@@ -107,7 +138,7 @@ def get_cursor():
             conn.rollback()
         elif DB_TYPE == "postgresql":
             conn.rollback()
-        print(f"[DATABASE] エラーによりロールバック: {e}")
+        UnifiedConfig.log_error(f"エラーによりロールバック: {e}")
         raise
     finally:
         cursor.close()
@@ -164,6 +195,7 @@ def get_create_table_sql():
                     company_id TEXT NOT NULL,
                     question TEXT NOT NULL,
                     answer TEXT NOT NULL,
+                    language TEXT DEFAULT 'ja',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
@@ -258,6 +290,7 @@ def get_create_table_sql():
                     company_id TEXT NOT NULL,
                     question TEXT NOT NULL,
                     answer TEXT NOT NULL,
+                    language TEXT DEFAULT 'ja',
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
@@ -313,12 +346,12 @@ def initialize_database():
             # 各テーブルを作成
             for table_name, sql in table_sqls.items():
                 cursor.execute(sql)
-                print(f"[DATABASE] テーブル作成/確認: {table_name}")
+                UnifiedConfig.log_debug(f"テーブル作成/確認: {table_name}")
             
-            print(f"[DATABASE] データベース初期化完了 ({DB_TYPE})")
+            UnifiedConfig.log_service_init("DATABASE", f"データベース初期化完了 ({DB_TYPE})")
             
     except Exception as e:
-        print(f"[DATABASE] 初期化エラー: {e}")
+        UnifiedConfig.log_error(f"データベース初期化エラー: {e}")
         raise
 
 # =============================================================================
@@ -335,9 +368,9 @@ def execute_query(query, params=None):
                 cursor.execute(query)
             return cursor.rowcount
     except Exception as e:
-        print(f"[DATABASE] クエリ実行エラー: {e}")
-        print(f"[DATABASE] クエリ: {query}")
-        print(f"[DATABASE] パラメータ: {params}")
+        UnifiedConfig.log_error(f"クエリ実行エラー: {e}")
+        UnifiedConfig.log_debug(f"クエリ: {query}")
+        UnifiedConfig.log_debug(f"パラメータ: {params}")
         raise
 
 def fetch_one(query, params=None):
@@ -351,7 +384,7 @@ def fetch_one(query, params=None):
             result = cursor.fetchone()
             return tuple(result) if result else None
     except Exception as e:
-        print(f"[DATABASE] fetch_one エラー: {e}")
+        UnifiedConfig.log_error(f"fetch_one エラー: {e}")
         raise
 
 def fetch_all(query, params=None):
@@ -365,7 +398,7 @@ def fetch_all(query, params=None):
             results = cursor.fetchall()
             return [tuple(row) for row in results]
     except Exception as e:
-        print(f"[DATABASE] fetch_all エラー: {e}")
+        UnifiedConfig.log_error(f"fetch_all エラー: {e}")
         raise
 
 def fetch_dict(query, params=None):
@@ -389,7 +422,7 @@ def fetch_dict(query, params=None):
                 return [dict(zip(columns, row)) for row in results]
             
     except Exception as e:
-        print(f"[DATABASE] fetch_dict エラー: {e}")
+        UnifiedConfig.log_error(f"fetch_dict エラー: {e}")
         raise
 
 def fetch_dict_one(query, params=None):
@@ -1007,7 +1040,7 @@ def table_exists(table_name):
             result = cursor.fetchone()
             
             if DB_TYPE == "postgresql":
-                return bool(result[0]) if result else False
+                return bool(result['exists']) if result else False
             else:  # SQLite
                 return result is not None
                 
