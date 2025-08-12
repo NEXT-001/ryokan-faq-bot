@@ -56,6 +56,8 @@ def get_response(user_input, company_id=None, user_info=""):
     Returns:
         tuple: (回答, 入力トークン数, 出力トークン数)
     """
+    import time
+    start_time = time.time()
     # 会社IDが指定されていない場合はデモ企業を使用
     if not company_id:
         company_id = "demo-company"
@@ -143,28 +145,58 @@ def get_response(user_input, company_id=None, user_info=""):
         embeddings_list = [faq['embedding'] for faq in valid_faqs]
         similarities = cosine_similarity([user_embedding], embeddings_list)
         
-        # 類似度の上位5件を表示
-        top_indices = np.argsort(similarities[0])[::-1][:5]
-        print("\n上位5件の類似質問:")
+        # 類似度の上位10件を表示（デバッグモードのみ）
+        top_indices = np.argsort(similarities[0])[::-1][:10]
+        
+        # 結果をリスト化
+        similarity_results = []
         for idx in top_indices:
             if idx < len(valid_faqs):
-                print(f"類似度: {similarities[0][idx]:.4f}, 質問: {valid_faqs[idx]['question'][:50]}...")
+                similarity_results.append((idx, similarities[0][idx], valid_faqs[idx]['question']))
+        
+        # ログ出力（環境によって制御）
+        UnifiedConfig.log_faq_search_details(similarity_results, 10)
         
         # 最も類似度の高い質問のインデックスを取得
         best_idx = np.argmax(similarities)
         similarity_score = similarities[0][best_idx]
         
-        print(f"\n最も類似度の高い質問: {valid_faqs[best_idx]['question']}")
-        print(f"類似度スコア: {similarity_score:.4f}")
+        UnifiedConfig.log_debug(f"最適合FAQ: {valid_faqs[best_idx]['question']}")
+        UnifiedConfig.log_info(f"FAQマッチング結果: 類似度{similarity_score:.3f}")
         
-        # 対応する回答を取得
+        # 高信頼度FAQ検索成功時の最適化処理
+        if similarity_score >= 0.8:
+            UnifiedConfig.log_debug(f"[PERFORMANCE] 高信頼度FAQ検索成功、他の処理をスキップ")
+            
+            # 対応する回答を取得
+            answer = valid_faqs[best_idx]["answer"]
+            
+            # FAQ回答内の[単語]にBingリンクを追加
+            answer = add_bing_links_to_brackets(answer)
+            
+            user_lang = detect_language(user_input)
+            UnifiedConfig.log_info(f"質問言語: {user_lang}")
+            
+            # 外国語の質問の場合は回答を翻訳
+            if user_lang != 'ja':
+                translation_service = TranslationService()
+                translated_answer = translation_service.translate_text(answer, user_lang, 'ja')
+                answer = _preserve_japanese_links_in_translation(answer, translated_answer)
+                UnifiedConfig.log_info(f"回答を{user_lang}に翻訳完了")
+            
+            # パフォーマンス監視
+            elapsed_time = time.time() - start_time
+            UnifiedConfig.log_info(f"[PERFORMANCE] FAQ検索処理時間: {elapsed_time:.2f}s (高信頼度早期リターン)")
+            return answer, len(user_input.split()), len(answer.split())
+        
+        # 対応する回答を取得（低〜中信頼度の場合の通常処理）
         answer = valid_faqs[best_idx]["answer"]
         
         # FAQ回答内の[単語]にBingリンクを追加
         answer = add_bing_links_to_brackets(answer)
         
         user_lang = detect_language(user_input)
-        print(f"質問した言語: {user_lang}")
+        UnifiedConfig.log_info(f"質問言語: {user_lang}")
         
         # 外国語の質問の場合は回答を翻訳
         if user_lang != 'ja':
@@ -173,13 +205,13 @@ def get_response(user_input, company_id=None, user_info=""):
             translated_answer = translation_service.translate_text(answer, user_lang, 'ja')
             # リンク部分は日本語のまま保持するため、元の回答と翻訳された回答を適切に結合
             answer = _preserve_japanese_links_in_translation(answer, translated_answer)
-            print(f"回答を{user_lang}に翻訳しました")
+            UnifiedConfig.log_info(f"回答を{user_lang}に翻訳完了")
         
         # 類似度スコアが低すぎる場合
         if similarity_score < SIMILARITY_THRESHOLD:
             # # 非常に低い類似度の場合
             # LINE通知を送信
-            print(f"類似度が低いため、LINE通知を送信します: {similarity_score:.4f}")
+            UnifiedConfig.log_info(f"類似度低下によるLINE通知送信: {similarity_score:.3f}")
             send_line_message(
                 question=user_input,
                 answer="適切な回答が見つかりませんでした。\n\n申し訳ございません。その質問については担当者に確認する必要があります。",
@@ -205,10 +237,13 @@ def get_response(user_input, company_id=None, user_info=""):
                         "しばらくお待ちいただけますでしょうか。"
                     )
 
+        # パフォーマンス監視
+        elapsed_time = time.time() - start_time  
+        UnifiedConfig.log_info(f"[PERFORMANCE] 総処理時間: {elapsed_time:.2f}s")
         return answer, len(user_input.split()), len(answer.split())
     
     except Exception as e:
-        print(f"回答取得エラー: {e}")
+        UnifiedConfig.log_error(f"回答取得エラー: {e}")
         error_message = f"エラーが発生しました。スタッフにお問い合わせください。"
         
         # エラー発生時もLINE通知
@@ -221,8 +256,11 @@ def get_response(user_input, company_id=None, user_info=""):
                 company_id=company_id
             )
         except Exception as line_error:
-            print(f"LINE通知エラー: {line_error}")
+            UnifiedConfig.log_error(f"LINE通知エラー: {line_error}")
         
+        # パフォーマンス監視（エラー時）
+        elapsed_time = time.time() - start_time
+        UnifiedConfig.log_info(f"[PERFORMANCE] エラー処理時間: {elapsed_time:.2f}s")
         return error_message, 0, 0
 
 

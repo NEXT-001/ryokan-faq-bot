@@ -30,8 +30,10 @@ stripe>=5.0.0,<6.0.0
 # ===== LINE Bot（オプション機能） =====
 line-bot-sdk>=3.5.0,<4.0.0
 
+# ===== データベース =====
+psycopg2-binary>=2.9.0,<3.0.0
+
 # 注意: 以下は標準ライブラリのためインストール不要
-# - sqlite3 (データベース)
 # - smtplib (メール送信)
 # - os, sys, json, csv, time, datetime, hashlib, threading
 # - pickle, shutil, contextlib

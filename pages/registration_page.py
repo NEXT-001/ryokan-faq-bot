@@ -1,11 +1,9 @@
 """
-登録ページ（最適化版）
+シンプル登録ページ（メールアドレスのみ）
 pages/registration_page.py
 """
 import streamlit as st
-from utils.db_utils import init_db, register_user
-from services.enhanced_location_service import EnhancedLocationService
-from utils.streamlit_optimization import StreamlitOptimizer, FormValidator
+from services.simplified_registration_service import SimplifiedRegistrationService
 from config.unified_config import UnifiedConfig
 from utils.ip_restriction import check_ip_restriction, display_ip_restriction_error
 
@@ -32,7 +30,7 @@ def hide_entire_sidebar():
 
 
 def registration_page():
-    """登録ページ（mode=reg）- 会社ID自動生成版"""
+    """登録ページ（mode=reg）- シンプル2ステップ登録版"""
     # サイドバー全体を非表示
     hide_entire_sidebar()
     
@@ -55,88 +53,50 @@ def registration_page():
     st.title("FAQチャットボットシステム")
     st.subheader("14日間無料お試し登録")
     
-    # データベース初期化
-    init_db()
+    st.markdown("""
+    ### 🚀 簡単2ステップで登録
     
-    # 住所情報を保存するためのセッション変数初期化
-    if 'address_info' not in st.session_state:
-        st.session_state.address_info = {}
+    **ステップ1:** メールアドレスを入力して登録リンクを受信  
+    **ステップ2:** 受信したメールのリンクから詳細情報を入力
+    """)
     
-    with st.form("register_form"):
-        company = st.text_input("会社名（チャットボット画面に表示されるので、旅館名などにしてください。）", placeholder="例: ○○旅館")
-        name = st.text_input("担当者名", placeholder="例: 田中太郎")
-        email = st.text_input("メールアドレス", placeholder="例: tanaka@sample.com")
-        password = st.text_input("パスワード", type="password", placeholder="8文字以上を推奨")
+    st.markdown("---")
+    
+    # シンプルなメールアドレス入力フォーム
+    with st.form("simple_registration_form"):
+        st.markdown("### 📧 メールアドレスを入力してください")
+        email = st.text_input(
+            "メールアドレス", 
+            placeholder="例: tanaka@example.com",
+            help="こちらのメールアドレスに本登録用のリンクをお送りします"
+        )
         
-        # 郵便番号と住所情報
-        st.markdown("### 📍 会社所在地")
-        postal_code = st.text_input("郵便番号", placeholder="例: 100-0001", help="ハイフンありなしどちらでも可")
-        
-        # 郵便番号から住所自動取得ボタン
-        if st.form_submit_button("📍 郵便番号から住所を取得", type="secondary"):
-            if postal_code:
-                location_service = EnhancedLocationService()
-                address_data = location_service.get_address_from_postal_code(postal_code)
-                if address_data:
-                    st.session_state.address_info = address_data
-                    st.success(f"住所を取得しました: {address_data.get('prefecture', '')} {address_data.get('city', '')} {address_data.get('address', '')}")
-                else:
-                    st.error("郵便番号から住所を取得できませんでした。手動で入力してください。")
-            else:
-                st.warning("郵便番号を入力してください。")
-        
-        # 住所情報表示（自動取得または手動入力）
-        prefecture = st.text_input("都道府県", value=st.session_state.address_info.get('prefecture', ''), placeholder="例: 東京都")
-        city = st.text_input("市区町村", value=st.session_state.address_info.get('city', ''), placeholder="例: 千代田区")
-        address = st.text_input("番地・建物名", value=st.session_state.address_info.get('address', ''), placeholder="例: 1-1-1 ○○ビル")
-        
-        submitted = st.form_submit_button("登録")
+        submitted = st.form_submit_button("📤 登録リンクを送信", type="primary", use_container_width=True)
 
     if submitted:
-        if company and name and email and password:
-            # パスワードの長さチェック
-            if len(password) < 6:
-                st.warning("パスワードは6文字以上で入力してください。")
-                return
+        if email and email.strip():
+            # ユーザーのIPアドレスを取得（セッション情報から）
+            user_ip = st.session_state.get('user_ip')
             
-            # 住所情報をまとめる
-            location_info = {
-                'postal_code': postal_code,
-                'prefecture': prefecture,
-                'city': city,
-                'address': address
-            }
+            # 登録リンクを送信
+            success, message = SimplifiedRegistrationService.send_registration_link(email.strip(), user_ip)
             
-            success = register_user(company, name, email, password, location_info)
             if success:
-                st.success("✅ 仮登録が完了しました。認証メールをご確認ください。")
-                st.info("📧 お送りしたメールのリンクをクリックして、登録を完了してください。")
+                st.success("✅ 登録リンクをお送りしました！")
+                st.info(f"📧 {email} にメールをお送りしました。")
+                st.markdown("""
+                ### 📝 次のステップ
+                1. メールボックスを確認してください
+                2. 「本登録はこちらから」のリンクをクリック
+                3. 会社情報とパスワードを入力して登録完了
                 
-                # 登録情報を表示
-                st.markdown("---")
-                st.markdown("### 📋 登録情報")
-                st.markdown(f"**会社名:** {company}")
-                st.markdown(f"**担当者:** {name}")
-                st.markdown(f"**メールアドレス:** {email}")
-                
-                # 住所情報も表示
-                if postal_code or prefecture or city or address:
-                    st.markdown("### 📍 会社所在地")
-                    if postal_code:
-                        st.markdown(f"**郵便番号:** {postal_code}")
-                    if prefecture:
-                        st.markdown(f"**都道府県:** {prefecture}")
-                    if city:
-                        st.markdown(f"**市区町村:** {city}")
-                    if address:
-                        st.markdown(f"**番地・建物名:** {address}")
-                
-                st.markdown("---")
-                st.markdown("**メールが届かない場合は、迷惑メールフォルダもご確認ください。**")
+                **※ メールが届かない場合は迷惑メールフォルダもご確認ください**  
+                **※ 登録リンクは24時間有効です**
+                """)
             else:
-                st.error("このメールアドレスは既に登録されているか、システムエラーが発生しました。")
+                st.error(f"❌ {message}")
         else:
-            st.warning("すべての項目を入力してください。")
+            st.warning("📧 メールアドレスを入力してください。")
     
     # 他のページへのリンク
     st.markdown("---")

@@ -123,17 +123,72 @@ class UnifiedConfig:
     @classmethod
     def log_info(cls, message):
         """情報ログ出力"""
-        print(f"[INFO] {message}")
+        if cls.should_log_level('INFO'):
+            print(f"[INFO] {message}")
     
     @classmethod
     def log_warning(cls, message):
         """警告ログ出力"""
-        print(f"[WARNING] {message}")
+        if cls.should_log_level('WARNING'):
+            print(f"[WARNING] {message}")
     
     @classmethod
     def log_error(cls, message):
         """エラーログ出力"""
-        print(f"[ERROR] {message}")
+        if cls.should_log_level('ERROR'):
+            print(f"[ERROR] {message}")
+    
+    # ===== 詳細ログレベル制御 =====
+    
+    @classmethod
+    def should_log_level(cls, level):
+        """指定されたレベルのログを出力すべきかを判定"""
+        level_priority = {
+            'DEBUG': 0,
+            'INFO': 1, 
+            'WARNING': 2,
+            'ERROR': 3
+        }
+        current_level = level_priority.get(cls.LOG_LEVEL, 1)  # デフォルト: INFO
+        target_level = level_priority.get(level.upper(), 1)
+        return target_level >= current_level
+    
+    @classmethod
+    def log_service_init(cls, service_name, message="初期化完了"):
+        """サービス初期化ログ（本番環境では簡略化）"""
+        if cls.is_test_mode() or cls.should_log_level('DEBUG'):
+            print(f"[{service_name}] {message}")
+        elif cls.should_log_level('INFO'):
+            print(f"[INFO] {service_name} 準備完了")
+    
+    @classmethod  
+    def log_faq_search_details(cls, similarity_scores, top_count=10):
+        """FAQ検索の詳細ログ（デバッグ時のみ）"""
+        if cls.should_log_level('DEBUG'):
+            print(f"[DEBUG] 上位{top_count}件の類似質問:")
+            for i, (idx, score, question) in enumerate(similarity_scores[:top_count]):
+                print(f"  {i+1}. 類似度: {score:.4f}, 質問: {question[:50]}...")
+        elif cls.should_log_level('INFO'):
+            best_score = similarity_scores[0][1] if similarity_scores else 0.0
+            print(f"[INFO] FAQ検索完了: 最高類似度{best_score:.3f}, {len(similarity_scores)}件検索")
+    
+    @classmethod
+    def log_translation_process(cls, source_text, target_lang, result_text, confidence=None):
+        """翻訳プロセスのログ（本番環境では簡略化）"""
+        if cls.should_log_level('DEBUG'):
+            conf_str = f" (信頼度: {confidence:.2f})" if confidence else ""
+            print(f"[TRANSLATION] 詳細: '{source_text}' → '{result_text}'{conf_str}")
+        elif cls.should_log_level('INFO'):
+            print(f"[TRANSLATION] 翻訳実行: {target_lang}に変換完了")
+    
+    @classmethod
+    def log_language_detection(cls, text, detected_lang, confidence, method=""):
+        """言語検出ログ（本番環境では簡略化）"""
+        if cls.should_log_level('DEBUG'):
+            method_str = f" (方法: {method})" if method else ""
+            print(f"[TRANSLATION] 言語検出詳細: '{text}' → {detected_lang} (信頼度: {confidence:.2f}){method_str}")
+        elif cls.should_log_level('INFO'):
+            print(f"[TRANSLATION] 言語検出: {detected_lang} (信頼度: {confidence:.2f})")
     
     @classmethod
     def use_advanced_logging(cls):
@@ -209,17 +264,18 @@ class UnifiedConfig:
     def get_url_params(cls):
         """URLパラメータを取得する"""
         try:
-            # verifyページかどうかをチェック（tokenパラメータの存在）
-            if "token" in st.query_params:
-                return "verify", None, False
-            
             # モードの取得（デフォルトはuser）
             mode = st.query_params.get("mode", cls.DEFAULT_MODE)
-            if mode not in ["admin", "user", "reg"]:
+            
+            # complete_regモードを許可リストに追加
+            if mode not in ["admin", "user", "reg", "complete_reg"]:
+                # verifyページかどうかをチェック（tokenパラメータの存在、ただしcomplete_regではない場合）
+                if "token" in st.query_params:
+                    return "verify", None, False
                 mode = cls.DEFAULT_MODE
             
-            # 会社IDの取得（regモードの場合は無視）
-            if mode == "reg":
+            # 会社IDの取得（regモードとcomplete_regモードの場合は無視）
+            if mode in ["reg", "complete_reg"]:
                 company_id = None
             else:
                 company_id = st.query_params.get("company", cls.DEFAULT_COMPANY_ID)

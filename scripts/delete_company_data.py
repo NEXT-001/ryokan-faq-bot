@@ -40,8 +40,12 @@ def confirm_deletion(company_id):
 def get_company_info(company_id):
     """会社情報を取得"""
     try:
+        from core.database import DB_TYPE
         with get_cursor() as cursor:
-            cursor.execute("SELECT * FROM companies WHERE id = ?", (company_id,))
+            if DB_TYPE == "postgresql":
+                cursor.execute("SELECT * FROM companies WHERE id = %s", (company_id,))
+            else:
+                cursor.execute("SELECT * FROM companies WHERE id = ?", (company_id,))
             company = cursor.fetchone()
             
             if company:
@@ -66,7 +70,9 @@ def count_related_data(company_id):
             counts = {}
             
             # users
-            cursor.execute("SELECT COUNT(*) as count FROM users WHERE company_id = ?", (company_id,))
+            from core.database import DB_TYPE
+            param_format = "%s" if DB_TYPE == "postgresql" else "?"
+            cursor.execute(f"SELECT COUNT(*) as count FROM users WHERE company_id = {param_format}", (company_id,))
             counts['users'] = cursor.fetchone()['count']
             
             # company_admins

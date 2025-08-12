@@ -7,6 +7,7 @@ from config.unified_config import UnifiedConfig
 from pages.user_page import user_page
 from pages.admin_page import admin_page
 from pages.registration_page import registration_page
+from pages.complete_registration_page import complete_registration_page
 from pages.verify_page import verify_page
 from utils.db_utils import cleanup_expired_tokens
 
@@ -62,6 +63,7 @@ def show_debug_info():
             st.markdown(f"- [ユーザーモード](?mode=user&company={test_company})")
             st.markdown(f"- [管理者モード](?mode=admin&company={test_company})")
             st.markdown(f"- [登録モード](?mode=reg)")
+            st.markdown(f"- [完全登録モード](?mode=complete_reg&token=test-token)")
             
             # セッションリセットボタン
             if st.button("セッションをリセット"):
@@ -131,6 +133,9 @@ def route_application():
     elif mode == "reg":
         # 登録ページ
         registration_page()
+    elif mode == "complete_reg":
+        # 完全登録ページ（メールリンクからアクセス）
+        complete_registration_page()
     elif mode == "admin":
         # 管理者ページ
         admin_page(company_id)

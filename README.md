@@ -55,19 +55,61 @@ Ryokan FAQ Botは、日本の旅館・ホテル業界向けに特化したマル
 
 `.env` ファイルを作成し、以下の設定を行います:
 
-```
+```bash
+# 基本設定
 TEST_MODE=true
 VOYAGE_API_KEY=your_api_key_here  # オプション
 ANTHROPIC_API_KEY=your_api_key_here  # オプション
+
+# ログレベル制御（推奨設定）
+LOG_LEVEL=INFO              # DEBUG, INFO, WARNING, ERROR
+DEBUG_MODE=false            # デバッグモード
+ENABLE_DEBUG_LOGS=false     # 詳細デバッグログ
 ```
 
+#### 基本パラメータ
 - `TEST_MODE`: `true` に設定すると、実際のAPIを使わずにテストデータで動作します
 - `VOYAGE_API_KEY`: VoyageAI APIのキー (エンベディング生成用、オプション)
 - `ANTHROPIC_API_KEY`: Anthropic APIのキー (拡張機能用、オプション)
 
+#### ログレベル制御
+- `LOG_LEVEL`: ログ出力レベル（DEBUG=全て、INFO=標準、WARNING=警告以上、ERROR=エラーのみ）
+- `DEBUG_MODE`: デバッグモード（詳細な初期化ログ等）
+- `ENABLE_DEBUG_LOGS`: 高度なデバッグログ出力
+
 ### テストモードについて
 
 テストモードでは、エンベディングAPIを呼び出さずに擬似的なエンベディングを生成します。実運用環境ではVoyageAI APIキーの設定を推奨しますが、小規模な利用ではテストモードでも十分機能します。
+
+### ログレベル制御について
+
+システムでは環境に応じた適切なログ出力を実現するため、詳細なログレベル制御を提供しています。
+
+#### 本番環境推奨設定
+```bash
+export LOG_LEVEL=INFO
+export DEBUG_MODE=false
+export ENABLE_DEBUG_LOGS=false
+```
+- 必要な情報のみを簡潔に出力
+- パフォーマンスを重視
+- ログファイルサイズの抑制
+
+#### 開発環境推奨設定
+```bash
+export LOG_LEVEL=DEBUG
+export DEBUG_MODE=true
+export ENABLE_DEBUG_LOGS=true
+```
+- 全ての詳細ログを出力
+- デバッグ情報、FAQ検索詳細、翻訳プロセス等
+- 問題の特定・解決に有用
+
+#### ログレベル詳細
+- **DEBUG**: 全ての詳細ログを出力（FAQ上位10件、翻訳プロセス詳細等）
+- **INFO**: 重要な情報のみを簡潔に出力（推奨：本番環境）
+- **WARNING**: 警告とエラーのみ出力
+- **ERROR**: エラーのみ出力
 
 ## 実行方法
 
@@ -131,8 +173,9 @@ ryokan-faq-bot/
 ├── app.py                  # メインアプリケーション (推奨)
 ├── main.py                 # レガシー互換エントリーポイント
 ├── config/
-│   ├── app_config.py       # アプリケーション設定
-│   └── settings.py         # システム設定
+│   ├── unified_config.py   # 統一設定管理（ログレベル制御含む）
+│   ├── app_config.py       # アプリケーション設定（レガシー互換）
+│   └── settings.py         # システム設定（レガシー互換）
 ├── core/
 │   ├── app_router.py       # URL ルーティング
 │   └── database.py         # データベース管理
@@ -145,6 +188,7 @@ ryokan-faq-bot/
 │   ├── chat_service.py     # チャット回答サービス
 │   ├── company_service.py  # 施設管理サービス
 │   ├── embedding_service.py # ベクトル埋め込み生成
+│   ├── translation_service.py # 翻訳サービス（多言語対応）
 │   ├── history_service.py  # 履歴管理
 │   ├── login_service.py    # ログイン認証
 │   ├── email_service.py    # メール送信
@@ -183,8 +227,15 @@ ryokan-faq-bot/
 - メール認証が機能しない場合は .env ファイルのメール設定を確認してください
 - パスワードハッシュ化に関するエラーが発生した場合は依存関係を再インストールしてください
 
+### ログ関連の問題
+
+- **ログが出力されない**: `LOG_LEVEL`環境変数を`DEBUG`に設定してください
+- **ログが多すぎる**: 本番環境では`LOG_LEVEL=INFO`を使用してください
+- **初期化ログが重複**: システムは既にシングルトンパターンで最適化済みです
+- **デバッグ情報が必要**: `DEBUG_MODE=true`と`ENABLE_DEBUG_LOGS=true`を設定してください
+
 ### その他の問題
 
-- システムのログを確認して問題を特定してください
+- システムのログを確認して問題を特定してください（ログレベルを`DEBUG`に設定すると詳細情報が表示されます）
 - テストモードで問題が解決するか確認してください
 - ブラウザのキャッシュをクリアしてページを再読み込みしてください

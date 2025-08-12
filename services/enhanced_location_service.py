@@ -748,12 +748,21 @@ class EnhancedLocationService:
             from core.database import get_cursor
             
             # companiesテーブルから所在地情報を取得
+            from core.database import DB_TYPE
             with get_cursor() as cursor:
-                cursor.execute("""
-                    SELECT prefecture, city, address, postal_code
-                    FROM companies 
-                    WHERE id = ?
-                """, (company_id,))
+                if DB_TYPE == "postgresql":
+                    query = """
+                        SELECT prefecture, city, address, postal_code
+                        FROM companies 
+                        WHERE id = %s
+                    """
+                else:
+                    query = """
+                        SELECT prefecture, city, address, postal_code
+                        FROM companies 
+                        WHERE id = ?
+                    """
+                cursor.execute(query, (company_id,))
                 
                 result = cursor.fetchone()
                 

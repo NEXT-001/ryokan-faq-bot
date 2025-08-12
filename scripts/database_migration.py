@@ -59,7 +59,11 @@ def migrate_company_admins_to_users():
             created_at = admin['created_at']
             
             # 既にusersテーブルに同じメールアドレスが存在するかチェック
-            existing_user_query = "SELECT id FROM users WHERE email = ?"
+            from core.database import DB_TYPE
+            if DB_TYPE == "postgresql":
+                existing_user_query = "SELECT id FROM users WHERE email = %s"
+            else:
+                existing_user_query = "SELECT id FROM users WHERE email = ?"
             existing_user = fetch_dict(existing_user_query, (email,))
             
             if existing_user:
@@ -68,15 +72,24 @@ def migrate_company_admins_to_users():
                 continue
             
             # companiesテーブルから会社名を取得
-            company_query = "SELECT name FROM companies WHERE id = ?"
+            if DB_TYPE == "postgresql":
+                company_query = "SELECT name FROM companies WHERE id = %s"
+            else:
+                company_query = "SELECT name FROM companies WHERE id = ?"
             company_result = fetch_dict(company_query, (company_id,))
             company_name = company_result[0]['name'] if company_result else f"企業_{company_id}"
             
             # usersテーブルに挿入
-            insert_query = """
-                INSERT INTO users (company_id, company_name, name, email, password, created_at, is_verified)
-                VALUES (?, ?, ?, ?, ?, ?, 1)
-            """
+            if DB_TYPE == "postgresql":
+                insert_query = """
+                    INSERT INTO users (company_id, company_name, name, email, password, created_at, is_verified)
+                    VALUES (%s, %s, %s, %s, %s, %s, 1)
+                """
+            else:
+                insert_query = """
+                    INSERT INTO users (company_id, company_name, name, email, password, created_at, is_verified)
+                    VALUES (?, ?, ?, ?, ?, ?, 1)
+                """
             
             try:
                 execute_query(insert_query, (company_id, company_name, username, email, password, created_at))

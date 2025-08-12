@@ -17,6 +17,7 @@ from services.enhanced_location_service import EnhancedLocationService
 from services.google_places_service import GooglePlacesService, format_google_places_response
 from services.translation_service import TranslationService
 from config.unified_config import UnifiedConfig
+from core.singleton_base import SingletonService
 
 # 信頼度しきい値
 HIGH_CONFIDENCE_THRESHOLD = 0.8
@@ -103,8 +104,8 @@ ACTIVITY_KEYWORDS = [
     'DIY', '互动', '互動', '参与', '參與'
 ]
 
-class UnifiedChatService:
-    def __init__(self):
+class UnifiedChatService(SingletonService):
+    def _initialize(self):
         self.line_service = LineNotificationService()
         self.link_service = SpecializedLinkService()
         self.location_service = EnhancedLocationService()
@@ -424,28 +425,25 @@ class UnifiedChatService:
             )
         )
         
-        print(f"[TRANSLATION_CHECK] === 詳細分析結果 ===")
-        print(f"[TRANSLATION_CHECK] 分析対象テキスト: '{response_text[:200]}...'")
-        print(f"[TRANSLATION_CHECK] テキスト長: {len(response_text)}")
+        # 詳細分析ログをDEBUGレベルに移動
+        UnifiedConfig.log_debug(f"[TRANSLATION_CHECK] === 詳細分析結果 ===")
+        UnifiedConfig.log_debug(f"[TRANSLATION_CHECK] 分析対象テキスト: '{response_text[:100]}...'")
+        UnifiedConfig.log_debug(f"[TRANSLATION_CHECK] テキスト長: {len(response_text)}")
         
-        # 検出された日本語パターンを表示
-        found_japanese = [pattern for pattern in japanese_patterns if pattern in response_text]
-        print(f"[TRANSLATION_CHECK] 検出された日本語パターン: {found_japanese[:10]}...")  # 最初の10個
+        # 検出されたパターンの詳細情報（DEBUGのみ）
+        if UnifiedConfig.should_log_level('DEBUG'):
+            found_japanese = [pattern for pattern in japanese_patterns if pattern in response_text]
+            found_target = [pattern for pattern in target_words if pattern in response_text]
+            UnifiedConfig.log_debug(f"[TRANSLATION_CHECK] 検出された日本語パターン: {found_japanese[:10]}...")
+            UnifiedConfig.log_debug(f"[TRANSLATION_CHECK] 検出された{target_language}パターン: {found_target}")
+            UnifiedConfig.log_debug(f"[TRANSLATION_CHECK] 日本語パターン検出数: {japanese_ratio}")
+            UnifiedConfig.log_debug(f"[TRANSLATION_CHECK] {target_language}パターン検出数: {target_ratio}")
+            UnifiedConfig.log_debug(f"[TRANSLATION_CHECK] 日本語文法要素数: {japanese_grammar}")
+            UnifiedConfig.log_debug(f"[TRANSLATION_CHECK] 判定条件: {japanese_ratio > target_ratio}, {japanese_ratio >= 3 and target_ratio <= 2}, {japanese_grammar >= 2}")
+            UnifiedConfig.log_debug(f"[TRANSLATION_CHECK] === 分析終了 ===")
         
-        # 検出されたターゲット言語パターンを表示  
-        found_target = [pattern for pattern in target_words if pattern in response_text]
-        print(f"[TRANSLATION_CHECK] 検出された{target_language}パターン: {found_target}")
-        
-        print(f"[TRANSLATION_CHECK] 日本語パターン検出数: {japanese_ratio}")
-        print(f"[TRANSLATION_CHECK] {target_language}パターン検出数: {target_ratio}")
-        print(f"[TRANSLATION_CHECK] 日本語文法要素数: {japanese_grammar}")
-        print(f"[TRANSLATION_CHECK] 日本語あり: {has_japanese}")
-        print(f"[TRANSLATION_CHECK] ターゲット言語あり: {has_target_language}")
-        print(f"[TRANSLATION_CHECK] 判定条件1: japanese_ratio > target_ratio = {japanese_ratio > target_ratio}")
-        print(f"[TRANSLATION_CHECK] 判定条件2: (japanese_ratio >= 3 and target_ratio <= 2) = {japanese_ratio >= 3 and target_ratio <= 2}")
-        print(f"[TRANSLATION_CHECK] 判定条件3: japanese_grammar >= 2 = {japanese_grammar >= 2}")
-        print(f"[TRANSLATION_CHECK] 最終判定: {needs_translation}")
-        print(f"[TRANSLATION_CHECK] === 分析終了 ===")
+        # 簡潔な結果はINFOレベルで出力
+        UnifiedConfig.log_info(f"[TRANSLATION] 翻訳判定完了: {'必要' if needs_translation else '不要'} (理由: {target_language}→日本語比{japanese_ratio}:{target_ratio})")
         
         return needs_translation
     
@@ -771,7 +769,7 @@ class UnifiedChatService:
                         header = detail_headers.get(language, "\n\n📍 **詳細情報:**\n")
                         response_text += header
                         
-                        for link in links[:2]:
+                        for link in links[:10]:
                             response_text += f"• **[{link['name']}]({link['url']})**\n"
                 else:
                     # フォールバック: 従来のリンク生成（URL日本語、ラベル多言語）
@@ -792,7 +790,7 @@ class UnifiedChatService:
                     else:
                         response_text = f"🍽️ **{city_name}のグルメ情報:**\n"
                     
-                    for link in links[:5]:
+                    for link in links[:10]:
                         response_text += f"• **[{link['name']}]({link['url']})**\n"
                 
                 # フッター（多言語対応）
@@ -825,7 +823,7 @@ class UnifiedChatService:
                 }
                 header = error_headers.get(language, f"🍽️ **{city_name}のグルメ情報:**\n")
                 response_text = header
-                for link in links[:5]:
+                for link in links[:10]:
                     response_text += f"• **[{link['name']}]({link['url']})**\n"
                 
                 # エラー時フッター（多言語対応）
@@ -970,7 +968,7 @@ class UnifiedChatService:
                     }
                     header = detail_headers.get(language, "\n\n📍 **詳細情報:**\n")
                     response_text += header
-                    for link in links[:2]:
+                    for link in links[:10]:
                         response_text += f"• **[{link['name']}]({link['url']})**\n"
                 else:
                     UnifiedConfig.log_debug("専門リンクが生成されませんでした")
@@ -1016,7 +1014,7 @@ class UnifiedChatService:
                     else:
                         response_text += "📍 **詳細情報:**\n"
                     
-                    for link in links[:5]:
+                    for link in links[:10]:
                         response_text += f"• **[{link['name']}]({link['url']})**\n"
                 else:
                     if language == 'ko':
@@ -1091,7 +1089,7 @@ class UnifiedChatService:
             
             # 位置情報付き回答の拡張
             response_text += f"\n\n📍 **{location_info.get('location', {}).get('city', '不明な地域')}周辺の詳細情報:**\n"
-            for link in specialized_links[:5]:  # 上位5件
+            for link in specialized_links[:10]:  # 上位10件
                 response_text += f"• **[{link['name']}]({link['url']})**\n"
         
         return {
@@ -1340,7 +1338,7 @@ class UnifiedChatService:
                 }
                 response_text = headers.get(language, f"🛍️ **{city_name}のショッピング情報:**\n")
                 
-                for link in links[:5]:
+                for link in links[:10]:
                     response_text += f"• **[{link['name']}]({link['url']})**\n"
                 
                 # フッター（多言語対応）
@@ -1422,7 +1420,7 @@ class UnifiedChatService:
                 }
                 response_text = headers.get(language, f"🎯 **{city_name}の体験・アクティビティ情報:**\n")
                 
-                for link in links[:5]:
+                for link in links[:10]:
                     response_text += f"• **[{link['name']}]({link['url']})**\n"
                 
                 # フッター（多言語対応）

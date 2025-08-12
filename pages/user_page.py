@@ -135,49 +135,49 @@ def user_page(company_id):
     
     # 統合チャット入力窓
     user_input = st.text_input(
-        "ご質問をどうぞ（日本語、英語、韓国語、中国語(簡体字)、中国語(繁体字)に対応）：", 
+        "ご質問をどうぞ（日本語、英語、韓国語、中国語に対応）：", 
         key="user_input", 
         placeholder="例: チェックインの時間は？ / 観光スポットは？(추천 관광지는?) / 人気のレストランは？(추천 레스토랑은?)"
     )
     st.caption("💡 FAQ・観光スポット・人気レストラン情報をお答えします")
     
-    # JSでブラウザ言語を取得
-    lang = st_javascript("await navigator.language")  # 例: "ja", "en-US", "zh-TW"
-    # lang = "ko"
-    
-    if not lang:
-        lang = "ja"
+    # --- ブラウザ言語の取得（変数名を明確化） ---
+    js_lang_info = st_javascript("""
+    (() => {
+    const lang = navigator.language || null;
+    const langs = (navigator.languages && navigator.languages.length)
+        ? navigator.languages
+        : (lang ? [lang] : []);
+    return { lang, langs };
+    })()
+    """) or {}
 
-    # 言語別のクイック検索ボタン用テキスト
-    translations = {
-        "en": (
-            "What are the tourist spots?",
-            "What are some popular restaurants?"
-        ),
-        "ja": (
-            "観光スポットは？",
-            "おすすめのレストランは？"
-        ),
-        "ko": (
-            "관광 명소는?",
-            "인기있는 레스토랑은?"
-        ),
-        "zh-CN": (
-            "旅游景点有哪些？",
-            "热门餐厅有哪些？"
-        ),
-        "zh-TW": (
-            "旅遊景點有哪些？",
-            "有哪些人氣餐廳？"
-        ),
+    # フルの言語タグ（例: "en-US", "zh-TW"）を保持
+    preferred_lang_tag = (
+        (js_lang_info.get("langs") and js_lang_info["langs"][0]) or
+        js_lang_info.get("lang") or
+        "ja"
+    )
+
+    # 基語（例: "en", "zh"）を別変数に
+    preferred_lang_base = preferred_lang_tag.split("-")[0].lower()
+    
+    # --- 翻訳テキスト定義（辞書名も衝突しにくく） ---
+    QUICK_TEXTS = {
+        "en": ("What are the tourist spots?", "What are some popular restaurants?"),
+        "ja": ("観光スポットは？", "おすすめのレストランは？"),
+        "ko": ("관광 명소는?", "인기있는 레스토랑은?"),
+        "zh": ("旅游景点有哪些？", "热门餐厅有哪些？"),
+        "zh-TW": ("旅遊景點有哪些？", "有哪些人氣餐廳？"),
     }
 
-    # langの先頭2文字や完全一致を順に探す
-    keys = [lang, lang[:2]] if len(lang) >= 2 else [lang]
-    q1, q2 = translations.get("en")  # デフォルト英語
-    for k in keys:
-        if k in translations:
-            q1, q2 = translations[k]
+    # フォールバック順：フルタグ → 基語 → 英語
+    lookup_order = [preferred_lang_tag, preferred_lang_base, "en"]
+
+    q1, q2 = QUICK_TEXTS["en"]  # デフォルト英語
+    for code in lookup_order:
+        if code in QUICK_TEXTS:
+            q1, q2 = QUICK_TEXTS[code]
             break
 
     # クイック検索ボタン

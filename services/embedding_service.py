@@ -158,7 +158,7 @@ def get_embedding(text, client=None):
 
 def create_embeddings_for_specific_faqs(company_id, faq_ids, show_progress=True):
     """
-    指定されたFAQのみエンベディングを作成・更新する
+    指定されたFAQのみエンベディングを作成・更新する (faq_embeddingsテーブルに保存)
     
     Args:
         company_id (str): 会社ID
@@ -171,13 +171,25 @@ def create_embeddings_for_specific_faqs(company_id, faq_ids, show_progress=True)
         return True
     
     try:
+        # FAQマイグレーション用テーブルの初期化
+        init_faq_migration()
+        
         # 指定されたFAQのみを取得
-        placeholders = ','.join(['?' for _ in faq_ids])
-        query = f"""
-            SELECT id, company_id, question, answer, language, created_at, updated_at
-            FROM faq_data 
-            WHERE company_id = ? AND id IN ({placeholders})
-        """
+        from core.database import DB_TYPE
+        if DB_TYPE == "postgresql":
+            placeholders = ','.join(['%s' for _ in faq_ids])
+            query = f"""
+                SELECT id, company_id, question, answer, language, created_at, updated_at
+                FROM faq_data 
+                WHERE company_id = %s AND id IN ({placeholders})
+            """
+        else:
+            placeholders = ','.join(['?' for _ in faq_ids])
+            query = f"""
+                SELECT id, company_id, question, answer, language, created_at, updated_at
+                FROM faq_data 
+                WHERE company_id = ? AND id IN ({placeholders})
+            """
         params = [company_id] + faq_ids
         faq_data = fetch_dict(query, params)
         
@@ -191,7 +203,7 @@ def create_embeddings_for_specific_faqs(company_id, faq_ids, show_progress=True)
         
         # VoyageAI APIクライアント初期化
         client = load_voyage_client()
-        if not client:
+        if not client and not UnifiedConfig.is_test_mode():
             error_msg = "VoyageAI APIクライアントの初期化に失敗しました"
             print(error_msg)
             if show_progress:
@@ -203,7 +215,8 @@ def create_embeddings_for_specific_faqs(company_id, faq_ids, show_progress=True)
             progress_bar = st.progress(0)
             status_text = st.empty()
         
-        # 各FAQのエンベディングを生成
+        # 各FAQのエンベディングを生成してfaq_embeddingsテーブルに保存
+        success_count = 0
         for i, faq in enumerate(faq_data):
             try:
                 if show_progress:
@@ -212,19 +225,29 @@ def create_embeddings_for_specific_faqs(company_id, faq_ids, show_progress=True)
                     status_text.text(f"エンベディング生成中... ({i+1}/{len(faq_data)})")
                 
                 # エンベディング生成
-                embedding = get_embedding(faq['question'])
+                embedding = get_embedding(faq['question'], client)
                 if embedding is None:
                     print(f"エンベディング生成失敗: ID {faq['id']}")
                     continue
                 
-                # DBに保存
-                serialized_embedding = serialize_embedding(embedding)
-                update_query = """
-                    UPDATE faq_data 
-                    SET embedding = ? 
-                    WHERE id = ?
-                """
-                execute_query(update_query, (serialized_embedding, faq['id']))
+                # faq_migration.pyのupdate_faq_in_db関数を使用してfaq_embeddingsテーブルに保存
+                print(f"[EMBEDDING] FAQ ID {faq['id']} のエンベディングをfaq_embeddingsテーブルに保存中...")
+                if update_faq_in_db(faq['id'], embedding=embedding):
+                    print(f"[EMBEDDING] FAQ ID {faq['id']} エンベディング保存完了")
+                    success_count += 1
+                else:
+                    print(f"[EMBEDDING] FAQ ID {faq['id']} エンベディング保存失敗")
+                
+                # 実際にfaq_embeddingsテーブルに保存されているかを確認
+                from core.database import DB_TYPE
+                param_format = "%s" if DB_TYPE == "postgresql" else "?"
+                verify_query = f"SELECT id FROM faq_embeddings WHERE faq_id = {param_format}"
+                from core.database import fetch_dict_one
+                verification = fetch_dict_one(verify_query, (faq['id'],))
+                if verification:
+                    print(f"[EMBEDDING] 検証OK: FAQ ID {faq['id']} のエンベディングがfaq_embeddingsテーブルに保存されています")
+                else:
+                    print(f"[EMBEDDING] 検証失敗: FAQ ID {faq['id']} のエンベディングがfaq_embeddingsテーブルに見つかりません")
                 
             except Exception as e:
                 print(f"FAQ ID {faq['id']} のエンベディング生成エラー: {e}")
@@ -233,10 +256,10 @@ def create_embeddings_for_specific_faqs(company_id, faq_ids, show_progress=True)
         if show_progress:
             progress_bar.progress(1.0)
             status_text.text("エンベディング生成完了")
-            st.success(f"新規追加された{len(faq_data)}件のFAQのエンベディングが完了しました")
+            st.success(f"新規追加された{len(faq_data)}件中{success_count}件のエンベディングがfaq_embeddingsテーブルに保存されました")
         
-        print(f"指定されたFAQのエンベディング生成完了: {len(faq_data)}件")
-        return True
+        print(f"指定されたFAQのエンベディング生成完了: {success_count}/{len(faq_data)}件")
+        return success_count > 0
         
     except Exception as e:
         error_msg = f"エンベディング生成エラー: {e}"
@@ -406,25 +429,25 @@ def create_embeddings(company_id, show_progress=True):
     if not original_test_mode:
         os.environ["TEST_MODE"] = "false"
     
-    # DBにエンベディングを保存
+    # DBにエンベディングを保存（faq_embeddingsテーブルを使用）
     if show_progress:
         save_status = st.empty()
-        save_status.info("💾 エンベディングデータをDBに保存しています...")
+        save_status.info("💾 エンベディングデータをfaq_embeddingsテーブルに保存しています...")
     
     try:
         success_count = 0
         for i, faq_item in enumerate(faq_data):
             if i < len(embeddings):
-                # 既存のFAQにエンベディングを更新
+                # faq_embeddingsテーブルにエンベディングを保存
                 if update_faq_in_db(faq_item['id'], embedding=embeddings[i]):
                     success_count += 1
         
         if show_progress:
-            save_status.success(f"✅ DB保存完了: {success_count}/{len(faq_data)} 件")
+            save_status.success(f"✅ faq_embeddingsテーブルに保存完了: {success_count}/{len(faq_data)} 件")
             time.sleep(0.5)
             save_status.empty()
         
-        print(f"FAQエンベディングをDBに保存しました: {success_count}/{len(faq_data)} 件")
+        print(f"FAQエンベディングをfaq_embeddingsテーブルに保存しました: {success_count}/{len(faq_data)} 件")
         return True
         
     except Exception as e:
