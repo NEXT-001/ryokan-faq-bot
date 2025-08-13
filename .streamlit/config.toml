@@ -3,8 +3,10 @@ developmentMode = false
 
 [server]
 port = 8501
-address = "127.0.0.1"
-headless = false
+address = "0.0.0.0"  # Render.com対応
+headless = true  # 非インタラクティブモード
+enableCORS = false
+enableXsrfProtection = false
 
 [client]
 toolbarMode = "minimal"
@@ -12,7 +14,11 @@ toolbarMode = "minimal"
 
 [browser]
 gatherUsageStats = false
-serverAddress = "localhost"
+# serverAddress設定を削除（Render.comで自動設定）
 
 [ui]
 hideTopBar = false  # トップバーは表示（ユーザビリティのため）
+
+# Render.com用の追加設定
+[logger]
+level = "info"

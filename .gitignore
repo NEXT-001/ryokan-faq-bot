@@ -170,7 +170,7 @@ cython_debug/
 .history/
 
 # Streamlit
-.streamlit/
+.streamlit/secrets.toml
 
 # システムファイル
 .DS_Store
