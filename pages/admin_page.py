@@ -11,6 +11,7 @@ from services.login_service import admin_management_page
 from services.payment_service import payment_management_page
 from services.history_service import show_history
 from utils.db_utils import login_user_by_email
+from utils.auth_validation import validate_company_access, handle_invalid_company_access, validate_session_integrity
 
 
 def hide_sidebar_navigation():
@@ -59,6 +60,18 @@ def admin_page(company_id):
     """管理者ページ（mode=admin）"""
     # サイドバーのページナビゲーションのみを非表示（サイドバー自体は保持）
     hide_sidebar_navigation()
+    
+    # セッション整合性チェック
+    if not validate_session_integrity():
+        return
+    
+    # 企業アクセスの妥当性を検証
+    user_email = getattr(st.session_state, 'user_email', None)
+    valid, message = validate_company_access(company_id, user_email)
+    
+    if not valid:
+        handle_invalid_company_access(company_id, user_email)
+        return
     
     # サイドバーを確実に表示するための設定
     st.markdown("""
@@ -230,8 +243,49 @@ def super_admin_company_management():
     """スーパー管理者の企業管理ページ"""
     import pandas as pd
     from services.company_service import add_company
+    from utils.data_consistency_checker import run_consistency_check, run_consistency_check_report
     
     st.header("企業管理")
+    
+    # データ整合性チェックセクション
+    st.subheader("🔍 データ整合性チェック")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("整合性チェック実行", type="secondary"):
+            with st.spinner("データ整合性をチェック中..."):
+                results = run_consistency_check(auto_fix=False)
+                
+                if results['issues_found'] == 0:
+                    st.success("✅ データ整合性に問題は見つかりませんでした")
+                else:
+                    st.warning(f"⚠️ {results['issues_found']}件の問題が見つかりました")
+                    
+                    # 詳細情報の表示
+                    with st.expander("詳細を表示"):
+                        st.json(results)
+    
+    with col2:
+        if st.button("自動修正実行", type="primary"):
+            with st.spinner("データ整合性をチェック・修正中..."):
+                results = run_consistency_check(auto_fix=True)
+                
+                if results['fixes_applied'] > 0:
+                    st.success(f"🔧 {results['fixes_applied']}件の問題を自動修正しました")
+                else:
+                    st.info("修正が必要な問題は見つかりませんでした")
+                
+                # 詳細情報の表示
+                with st.expander("修正詳細を表示"):
+                    st.json(results)
+    
+    with col3:
+        if st.button("レポート生成", type="secondary"):
+            with st.spinner("レポートを生成中..."):
+                report = run_consistency_check_report()
+                st.text_area("整合性チェックレポート", report, height=300)
+    
+    st.divider()
     
     try:
         # 企業一覧を表示

@@ -56,15 +56,8 @@ def get_existing_company_ids():
     except Exception as e:
         print(f"[EXISTING IDS] JSON取得エラー: {e}")
     
-    try:
-        # 3. companiesフォルダから取得
-        if os.path.exists(UnifiedConfig.COMPANIES_DIR):
-            folder_ids = [name for name in os.listdir(UnifiedConfig.COMPANIES_DIR) 
-                         if os.path.isdir(os.path.join(UnifiedConfig.COMPANIES_DIR, name))]
-            existing_ids.extend(folder_ids)
-            print(f"[EXISTING IDS] companiesフォルダから取得: {folder_ids}")
-    except Exception as e:
-        print(f"[EXISTING IDS] companiesフォルダ取得エラー: {e}")
+    # 3. companiesフォルダからの取得は廃止（データベース管理に移行済み）
+    print(f"[EXISTING IDS] companiesフォルダ機能は廃止されました")
     
     # 重複を除去
     unique_ids = list(set([id for id in existing_ids if id]))  # 空文字列やNoneを除外
@@ -156,133 +149,8 @@ def generate_company_id(company_name):
     """会社名から会社IDを生成（互換性維持）"""
     return generate_unique_company_id(company_name)
 
-def create_company_folder_structure(company_id, company_name):
-    """
-    会社用のフォルダ構造とファイルを作成する
-    
-    Args:
-        company_id (str): 会社ID
-        company_name (str): 会社名
-        
-    Returns:
-        bool: 作成成功したかどうか
-    """
-    try:
-        print(f"[FOLDER] フォルダ構造作成開始: company_id={company_id}, company_name={company_name}")
-        
-        # 会社フォルダのパスを作成（data/companies/{company_id}/）
-        company_folder = get_company_folder_path(company_id)
-        
-        print(f"[FOLDER] 作成対象パス: {company_folder}")
-        
-        # フォルダが存在しない場合は作成
-        if not os.path.exists(company_folder):
-            os.makedirs(company_folder, exist_ok=True)
-            print(f"[FOLDER CREATED] {company_folder}")
-        else:
-            print(f"[FOLDER EXISTS] {company_folder}")
-        
-        # フォルダ作成確認
-        if not os.path.exists(company_folder):
-            UnifiedConfig.log_error("フォルダ作成に失敗しました")
-            UnifiedConfig.log_debug(f"対象フォルダ: {company_folder}")
-            return False
-        
-        # 1. FAQ用のCSVファイルを作成
-        faq_csv_path = os.path.join(company_folder, "faq.csv")
-        if not os.path.exists(faq_csv_path):
-            # サンプルFAQデータを作成
-            sample_faq = {
-                "question": [
-                    f"{company_name}について教えてください",
-                    "お問い合わせ方法を教えてください",
-                    "営業時間はいつですか？",
-                    "サービスの詳細について知りたいです",
-                    "料金体系について教えてください"
-                ],
-                "answer": [
-                    f"ようこそ{company_name}のFAQシステムへ！こちらでは、よくある質問にお答えしています。",
-                    "お問い合わせは、メールまたはお電話にて承っております。詳細は担当者までお尋ねください。",
-                    "営業時間は平日9:00〜18:00となっております。土日祝日は休業です。",
-                    "サービスの詳細については、担当者が詳しくご説明いたします。お気軽にお問い合わせください。",
-                    "料金体系については、ご利用内容に応じて異なります。詳しくはお見積りをお出しいたします。"
-                ]
-            }
-            
-            try:
-                pd.DataFrame(sample_faq).to_csv(faq_csv_path, index=False, encoding='utf-8')
-                print(f"[FILE CREATED] {faq_csv_path}")
-            except Exception as e:
-                UnifiedConfig.log_error("FAQ CSVファイル作成に失敗しました")
-                UnifiedConfig.log_debug(f"エラー詳細: {e}")
-        else:
-            print(f"[FILE EXISTS] {faq_csv_path}")
-        
-        # 2. エンベディング結果ファイルを作成（空のpklファイル）
-        embeddings_path = os.path.join(company_folder, "faq_with_embeddings.pkl")
-        if not os.path.exists(embeddings_path):
-            # 空のエンベディングデータを作成
-            empty_embeddings = {
-                "questions": [],
-                "answers": [],
-                "embeddings": np.array([])
-            }
-            
-            try:
-                with open(embeddings_path, 'wb') as f:
-                    pickle.dump(empty_embeddings, f)
-                print(f"[FILE CREATED] {embeddings_path}")
-            except Exception as e:
-                UnifiedConfig.log_error("エンベディングファイル作成に失敗しました")
-                UnifiedConfig.log_debug(f"エラー詳細: {e}")
-        else:
-            print(f"[FILE EXISTS] {embeddings_path}")
-        
-        # 3. FAQ検索履歴ファイルを作成
-        history_csv_path = os.path.join(company_folder, "history.csv")
-        if not os.path.exists(history_csv_path):
-            # 履歴CSVのヘッダーを作成
-            history_headers = {
-                "timestamp": [],
-                "question": [],
-                "answer": [],
-                "input_tokens": [],
-                "output_tokens": [],
-                "user_info": [],
-                "company_id": []
-            }
-            
-            try:
-                pd.DataFrame(history_headers).to_csv(history_csv_path, index=False, encoding='utf-8')
-                print(f"[FILE CREATED] {history_csv_path}")
-            except Exception as e:
-                UnifiedConfig.log_error("履歴CSVファイル作成に失敗しました")
-                UnifiedConfig.log_debug(f"エラー詳細: {e}")
-        else:
-            print(f"[FILE EXISTS] {history_csv_path}")
-        
-        # 最終確認
-        required_files = ["faq.csv", "faq_with_embeddings.pkl", "history.csv"]
-        all_created = True
-        for file_name in required_files:
-            file_path = os.path.join(company_folder, file_name)
-            if not os.path.exists(file_path):
-                print(f"[FILE MISSING] {file_path}")
-                all_created = False
-        
-        if all_created:
-            print(f"[SUCCESS] 会社フォルダ構造を作成しました: {company_folder}")
-            return True
-        else:
-            print(f"[PARTIAL SUCCESS] 一部ファイルの作成に失敗: {company_folder}")
-            return False
-        
-    except Exception as e:
-        UnifiedConfig.log_error("会社フォルダ構造の作成に失敗しました")
-        UnifiedConfig.log_debug(f"エラー詳細: {e}")
-        import traceback
-        print(f"[FOLDER TRACEBACK] {traceback.format_exc()}")
-        return False
+# 削除済み: create_company_folder_structure() 
+# データベース管理に移行したため、フォルダ作成機能は廃止
 
 
 def validate_company_id(company_id):

@@ -26,8 +26,8 @@ def migrate_csv_to_db(company_id="demo-company"):
     """
     print(f"[MIGRATION] 検索履歴移行開始: {company_id}")
     
-    # CSVファイルのパス
-    csv_path = os.path.join(UnifiedConfig.get_data_path(company_id), "history.csv")
+    # CSVファイルのパス（廃止：フォルダ管理から移行済み）
+    csv_path = os.path.join(UnifiedConfig.get_data_path(), "history.csv")  # company_idは無視
     
     if not os.path.exists(csv_path):
         print(f"[MIGRATION] CSVファイルが見つかりません: {csv_path}")

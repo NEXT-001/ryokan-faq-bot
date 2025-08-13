@@ -26,7 +26,6 @@ class UnifiedConfig:
     
     # ===== ディレクトリパス =====
     DATA_DIR = "data"
-    COMPANIES_DIR = os.path.join(DATA_DIR, "companies")
     UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
     LOGS_DIR = os.path.join(DATA_DIR, "logs")
     BACKUP_DIR = os.path.join(DATA_DIR, "backups")
@@ -219,7 +218,6 @@ class UnifiedConfig:
     def ensure_data_directory(cls):
         """dataディレクトリの存在を確保"""
         os.makedirs(cls.DATA_DIR, exist_ok=True)
-        os.makedirs(cls.COMPANIES_DIR, exist_ok=True)
         os.makedirs(cls.UPLOAD_DIR, exist_ok=True)
         os.makedirs(cls.LOGS_DIR, exist_ok=True)
         os.makedirs(cls.BACKUP_DIR, exist_ok=True)
@@ -227,31 +225,21 @@ class UnifiedConfig:
     @classmethod
     def get_data_path(cls, company_id=None):
         """
-        会社IDに基づいたデータディレクトリのパスを取得する
+        データディレクトリのパスを取得する（company_idは無視、データベース管理に移行済み）
         
         Args:
-            company_id (str, optional): 会社ID
+            company_id (str, optional): 廃止予定（互換性のため残存）
             
         Returns:
             str: データディレクトリのパス
         """
-        if company_id:
-            company_path = os.path.join(cls.COMPANIES_DIR, company_id)
-            os.makedirs(company_path, exist_ok=True)
-            return company_path
         return cls.DATA_DIR
     
     @classmethod
-    def get_company_folder_path(cls, company_id):
-        """会社フォルダのパスを取得"""
-        company_path = os.path.join(cls.COMPANIES_DIR, company_id)
-        os.makedirs(company_path, exist_ok=True)
-        return company_path
-    
-    @classmethod
     def get_faq_file_path(cls, company_id):
-        """FAQファイルのパスを取得"""
-        return os.path.join(cls.get_data_path(company_id), cls.FAQ_FILE)
+        """FAQファイルのパスを取得（廃止予定：データベース管理に移行済み）"""
+        # レガシー互換性のみ - 実際にはDBから取得
+        return os.path.join(cls.get_data_path(), cls.FAQ_FILE)
     
     @classmethod
     def get_db_path(cls, company_id=None):

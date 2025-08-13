@@ -13,9 +13,9 @@ import streamlit as st
 # 新しい統一設定をインポート
 from config.unified_config import UnifiedConfig
 
-# ディレクトリパス定数
+# ディレクトリパス定数（COMPANIES_DIRは廃止）
 DATA_DIR = "data"
-COMPANIES_DIR = os.path.join(DATA_DIR, "companies")
+# COMPANIES_DIR = os.path.join(DATA_DIR, "companies")  # 廃止：データベース管理に移行
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 LOGS_DIR = os.path.join(DATA_DIR, "logs")
 BACKUP_DIR = os.path.join(DATA_DIR, "backups")
@@ -120,32 +120,22 @@ def is_test_mode():
 
 def get_data_path(company_id=None):
     """
-    会社IDに基づいたデータディレクトリのパスを取得する
+    データディレクトリのパスを取得する（廃止：company_idは無視、データベース管理に移行済み）
     
     Args:
-        company_id (str, optional): 会社ID。指定されない場合は共通データディレクトリを返す
+        company_id (str, optional): 廃止予定（互換性のため残存）
         
     Returns:
         str: データディレクトリのパス
     """
-    # 基本データディレクトリ
+    # 基本データディレクトリのみ
     base_path = "data"
     
     # データディレクトリが存在しない場合は作成
     if not os.path.exists(base_path):
         os.makedirs(base_path)
     
-    # 会社別データディレクトリ
-    if company_id:
-        company_path = os.path.join(base_path, "companies", company_id)
-        
-        # 会社別ディレクトリが存在しない場合は作成
-        if not os.path.exists(company_path):
-            os.makedirs(company_path)
-            
-        return company_path
-    
-    # 共通データディレクトリ
+    # company_idパラメータは無視（データベース管理に移行済み）
     return base_path
 
 def ensure_directory_exists(directory_path):
@@ -157,51 +147,42 @@ def ensure_directory_exists(directory_path):
 
 def get_company_folder_path(company_id):
     """
-    会社IDに基づいた会社フォルダのパスを取得する
+    会社フォルダのパスを取得する（廃止：フォルダ管理は使用されません）
     
     Args:
-        company_id (str): 会社ID
+        company_id (str): 会社ID（無視される）
         
     Returns:
-        str: 会社フォルダのパス
+        str: データディレクトリのパス（互換性のため）
     """
-    company_path = os.path.join(COMPANIES_DIR, company_id)
-    ensure_directory_exists(company_path)
-    return company_path
+    print(f"[DEPRECATED] get_company_folder_path: フォルダ管理は廃止されました。company_id={company_id}")
+    return get_data_path()
 
 def get_upload_folder_path(company_id=None):
-    """アップロードフォルダのパスを取得"""
-    if company_id:
-        upload_path = os.path.join(get_company_folder_path(company_id), "uploads")
-    else:
-        upload_path = UPLOAD_DIR
-    
+    """アップロードフォルダのパスを取得（company_idは無視、共通アップロードディレクトリを使用）"""
+    # company_idパラメータは無視し、共通アップロードディレクトリを使用
+    upload_path = UPLOAD_DIR
     ensure_directory_exists(upload_path)
     return upload_path
 
 def get_backup_folder_path(company_id=None):
-    """バックアップフォルダのパスを取得"""
-    if company_id:
-        backup_path = os.path.join(get_company_folder_path(company_id), "backups")
-    else:
-        backup_path = BACKUP_DIR
-    
+    """バックアップフォルダのパスを取得（company_idは無視、共通バックアップディレクトリを使用）"""
+    # company_idパラメータは無視し、共通バックアップディレクトリを使用
+    backup_path = BACKUP_DIR
     ensure_directory_exists(backup_path)
     return backup_path
 
 def get_logs_folder_path(company_id=None):
-    """ログフォルダのパスを取得"""
-    if company_id:
-        logs_path = os.path.join(get_company_folder_path(company_id), "logs")
-    else:
-        logs_path = LOGS_DIR
-    
+    """ログフォルダのパスを取得（company_idは無視、共通ログディレクトリを使用）"""
+    # company_idパラメータは無視し、共通ログディレクトリを使用
+    logs_path = LOGS_DIR
     ensure_directory_exists(logs_path)
     return logs_path
 
 def get_faq_file_path(company_id):
-    """FAQファイルのパスを取得"""
-    return os.path.join(get_data_path(company_id), FAQ_FILE)
+    """FAQファイルのパスを取得（廃止：データベース管理に移行済み）"""
+    print(f"[DEPRECATED] get_faq_file_path: FAQファイル管理は廃止されました。company_id={company_id}")
+    return os.path.join(get_data_path(), FAQ_FILE)  # 互換性のためのみ
 
 def get_companies_file_path():
     """企業情報ファイルのパスを取得"""
