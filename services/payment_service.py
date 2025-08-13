@@ -78,20 +78,44 @@ class PaymentService:
         return self.PLANS
     
     def create_payment_method(self, card_data: Dict[str, Any]) -> stripe.PaymentMethod:
-        """PaymentMethodを作成"""
+        """PaymentMethodを作成（テスト環境向け）"""
         try:
-            payment_method = stripe.PaymentMethod.create(
-                type="card",
-                card={
-                    "number": card_data["number"].replace(" ", ""),
-                    "exp_month": card_data["exp_month"],
-                    "exp_year": card_data["exp_year"],
-                    "cvc": card_data["cvc"],
-                },
-                billing_details={
-                    "name": card_data["cardholder_name"],
-                }
-            )
+            # テスト環境でのみ使用 - 本番環境ではStripe Elementsを使用すべき
+            card_number = card_data["number"].replace(" ", "")
+            
+            # テスト用カード番号の場合は、事前定義されたテストPaymentMethodを使用
+            test_payment_methods = {
+                "4242424242424242": "pm_card_visa",  # Visa成功
+                "4000000000000002": "pm_card_visa_debit",  # Visa拒否
+                "4000000000009995": "pm_card_chargeDeclined",  # 拒否（generic）
+                "5555555555554444": "pm_card_mastercard",  # MasterCard成功
+                "378282246310005": "pm_card_amex",  # American Express成功
+            }
+            
+            # 生のカードデータを使用せず、Stripe Test Tokensを使用
+            if card_number in test_payment_methods:
+                logger.info(f"テストカードを使用: {card_number}")
+                # Stripe Test Tokenを作成してからPaymentMethodを作成
+                token = stripe.Token.create(
+                    card={
+                        "number": card_number,
+                        "exp_month": card_data["exp_month"],
+                        "exp_year": card_data["exp_year"],
+                        "cvc": card_data["cvc"],
+                    }
+                )
+                
+                # Tokenを使用してPaymentMethodを作成
+                payment_method = stripe.PaymentMethod.create(
+                    type="card",
+                    card={"token": token.id},
+                    billing_details={
+                        "name": card_data.get("cardholder_name", "Test User"),
+                    }
+                )
+            else:
+                # テスト以外のカードの場合は拒否
+                raise Exception("テスト環境では、テスト用カード番号のみ使用できます。4242424242424242 などを使用してください。")
             
             logger.info(f"PaymentMethod created: {payment_method.id}")
             return payment_method

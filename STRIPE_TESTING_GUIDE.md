@@ -56,19 +56,57 @@ STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxx
 2. **テストモード**になっていることを確認（左上のトグル）
 3. 「API」セクションでテスト用APIキーを確認
 
-### 2. Webhook設定（オプション）
-```
-Webhook URL: https://your-domain.com/stripe/webhook
-イベント: 
-- payment_intent.succeeded
-- customer.subscription.created
-- customer.subscription.updated
-- customer.subscription.deleted
-- invoice.payment_succeeded
-- invoice.payment_failed
+### 2. Webhook設定
+
+⚠️ **重要**: 現在のStreamlitアプリケーションにはWebhookエンドポイントが実装されていません。
+
+**現在の状況**:
+- アプリケーションはStreamlitベースで、REST API エンドポイントが存在しません
+- `https://ryokan-faq-bot.onrender.com/stripe/webhook` はアクセスできません
+
+**解決方法の選択肢**:
+
+#### オプション1: Webhookなしで運用（推奨）
+決済状況は手動で確認するか、Stripeダッシュボードで監視
+```bash
+# Webhookの代わりに、決済状況を定期的にチェック
+python scripts/check_payment_status.py
 ```
 
-### 3. 環境変数の確認
+#### オプション2: 別のWebhookサーバーを用意
+FastAPIやFlaskでWebhook専用サーバーを作成し、別のURLで運用
+
+#### オプション3: Streamlitに統合（開発必要）
+```python
+# app.py に Flask統合を追加（要実装）
+# GET /stripe/webhook -> Stripeからの通知を受信
+```
+
+### 3. テストカード使用時の注意
+
+**重要**: 現在のシステムでは、セキュリティ上の理由により以下のテスト用カード番号のみが使用可能です：
+
+| カード番号 | ブランド | 結果 |
+|-----------|----------|------|
+| 4242424242424242 | Visa | 成功 |
+| 4000000000000002 | Visa | 拒否 |
+| 4000000000009995 | Visa | 汎用拒否 |
+| 5555555555554444 | MasterCard | 成功 |
+| 378282246310005 | American Express | 成功 |
+
+**使用方法**:
+```
+カード番号: 4242424242424242
+有効期限: 任意の未来の月/年（例：12/25）
+CVC: 任意の3桁（例：123）
+カード名義: 任意の名前
+```
+
+**エラーが出る場合**:
+- 上記以外のカード番号は使用できません
+- Stripeのテスト環境設定を確認してください
+
+### 4. 環境変数の確認
 ```bash
 python -c "
 import os
