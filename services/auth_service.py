@@ -17,7 +17,7 @@ from core.database import (
     get_company_from_db
 )
 from services.company_service import verify_company_admin
-from utils.company_utils import generate_company_id, create_company_folder_structure
+from utils.company_utils import generate_company_id
 from config.unified_config import UnifiedConfig
 
 
@@ -132,6 +132,7 @@ class AuthService:
             token = str(uuid.uuid4())
             
             # 3. データベースに仮登録
+            import sqlite3
             db_name = get_db_path()
             conn = sqlite3.connect(db_name)
             c = conn.cursor()
@@ -166,7 +167,16 @@ class AuthService:
             conn.close()
             
             # 4. 会社フォルダ構造を作成
-            folder_success = create_company_folder_structure(company_id, company_name, password, email, location_info)
+            # フォルダ作成は廃止、データベース登録のみ実行
+            from core.database import save_company_to_db
+            from datetime import datetime
+            folder_success = save_company_to_db(
+                company_id=company_id,
+                company_name=company_name,
+                created_at=datetime.now().isoformat(),
+                faq_count=0,
+                location_info=location_info
+            )
             if not folder_success:
                 print(f"[AUTH_SERVICE] フォルダ構造作成失敗（登録は継続）")
             
@@ -183,8 +193,11 @@ class AuthService:
                 conn.close()
                 return False
                 
-        except sqlite3.IntegrityError:
-            print(f"[AUTH_SERVICE] メールアドレス重複: {email}")
+        except Exception as integrity_error:
+            if "UNIQUE constraint failed" in str(integrity_error) or "IntegrityError" in str(type(integrity_error)):
+                print(f"[AUTH_SERVICE] メールアドレス重複: {email}")
+            else:
+                print(f"[AUTH_SERVICE] データベースエラー: {integrity_error}")
             return False
         except Exception as e:
             print(f"[AUTH_SERVICE] 登録エラー: {e}")

@@ -17,6 +17,7 @@ from services.line_service import send_line_message  # LINE送信機能をイン
 from services.faq_migration import get_faq_data_from_db, init_faq_migration
 from services.tourism_service import detect_language, generate_tourism_response_by_city
 from services.translation_service import TranslationService
+from services.google_places_service import GooglePlacesService, format_google_places_response
 
 # 環境変数読み込み
 load_dotenv()
@@ -105,31 +106,25 @@ def get_response(user_input, company_id=None, user_info=""):
         faq_data = get_faq_data_from_db(company_id)
         
         if not faq_data:
-            # DBにデータがない場合は、従来のPKLファイルから読み込みを試行
-            company_path = os.path.join(UnifiedConfig.get_data_path(), "companies", company_id)
-            faq_path = os.path.join(company_path, "faq_with_embeddings.pkl")
-            
-            if os.path.exists(faq_path):
-                # PKLファイルが存在する場合は読み込み（後方互換性）
-                df = pd.read_pickle(faq_path)
-                print(f"PKL FAQ データ（後方互換）: {len(df)} 件")
-                
-                # データをDBに移行
-                from services.faq_migration import migrate_company_faq_data
-                if migrate_company_faq_data(company_id, show_progress=False):
-                    print(f"PKLデータをDBに移行しました: {company_id}")
-                    # 移行後にDBからデータを再取得
-                    faq_data = get_faq_data_from_db(company_id)
-                else:
-                    # 移行に失敗した場合はPKLデータをそのまま使用
-                    faq_data = df.to_dict('records')
-                    for i, row in enumerate(faq_data):
-                        row['id'] = i + 1
-            else:
-                error_msg = f"申し訳ありません。企業ID「{company_id}」のFAQデータが見つかりません。"
-                return error_msg, 0, 0
+            # DBにデータがない場合はエラー（PKL後方互換性は廃止）
+            error_msg = f"申し訳ありません。企業ID「{company_id}」のFAQデータが見つかりません。"
+            return error_msg, 0, 0
         
         print(f"FAQ データ: {len(faq_data)} 件")
+        
+        # エンベディングデータの詳細診断
+        embedding_stats = {"total": len(faq_data), "with_embedding": 0, "without_embedding": 0}
+        for faq in faq_data:
+            if faq['embedding'] is not None:
+                embedding_stats["with_embedding"] += 1
+            else:
+                embedding_stats["without_embedding"] += 1
+        
+        print(f"[EMBEDDING STATS] 総FAQ: {embedding_stats['total']}, エンベディング有: {embedding_stats['with_embedding']}, エンベディング無: {embedding_stats['without_embedding']}")
+        
+        # レストラン判定は unified_chat_service.py に委譲
+        # 二重処理を避けるため、chat_service.py ではレストラン検索を行わない
+        UnifiedConfig.log_debug(f"レストラン判定結果: {_is_restaurant_query(user_input)} (unified_chat_serviceに委譲)")
         
         # ユーザー入力のエンベディングを取得
         user_embedding = get_embedding(user_input)
@@ -138,8 +133,23 @@ def get_response(user_input, company_id=None, user_info=""):
         valid_faqs = [faq for faq in faq_data if faq['embedding'] is not None]
         
         if not valid_faqs:
-            error_msg = f"申し訳ありません。企業ID「{company_id}」のエンベディングデータが見つかりません。"
-            return error_msg, 0, 0
+            # エンベディングが見つからない場合の対応
+            if len(faq_data) > 0:
+                # FAQデータはあるがエンベディングがない場合
+                UnifiedConfig.log_warning(f"企業「{company_id}」: FAQデータ{len(faq_data)}件中、有効なエンベディングが0件です")
+                
+                # テストモードまたはエンベディング生成を提案
+                if UnifiedConfig.is_test_mode():
+                    # テストモードの場合はキーワードマッチングにフォールバック
+                    return _fallback_keyword_search(user_input, faq_data)
+                else:
+                    error_msg = (f"申し訳ありません。企業ID「{company_id}」のエンベディングデータが見つかりません。\n"
+                               f"管理者にエンベディング生成を依頼してください。\n"
+                               f"FAQデータ: {len(faq_data)}件, エンベディング: {embedding_stats['with_embedding']}件")
+                    return error_msg, 0, 0
+            else:
+                error_msg = f"申し訳ありません。企業ID「{company_id}」のFAQデータが見つかりません。"
+                return error_msg, 0, 0
         
         # コサイン類似度の計算
         embeddings_list = [faq['embedding'] for faq in valid_faqs]
@@ -264,6 +274,58 @@ def get_response(user_input, company_id=None, user_info=""):
         return error_message, 0, 0
 
 
+def _fallback_keyword_search(user_input, faq_data):
+    """エンベディングが利用できない場合のキーワードマッチング検索"""
+    try:
+        print(f"[FALLBACK] キーワード検索開始: '{user_input}'")
+        
+        # キーワードベースの簡易検索
+        user_keywords = user_input.lower().replace("？", "").replace("?", "").strip()
+        
+        best_match = None
+        best_score = 0
+        
+        for faq in faq_data:
+            question = faq['question'].lower()
+            answer = faq['answer']
+            
+            # キーワードマッチングスコアを計算
+            score = 0
+            
+            # 完全一致
+            if user_keywords in question:
+                score += 10
+            
+            # 部分的なキーワードマッチング
+            user_words = user_keywords.split()
+            for word in user_words:
+                if len(word) >= 2 and word in question:
+                    score += 1
+            
+            if score > best_score:
+                best_score = score
+                best_match = faq
+        
+        if best_match and best_score > 0:
+            print(f"[FALLBACK] マッチ見つかりました: スコア{best_score}, 質問: {best_match['question']}")
+            answer = best_match['answer']
+            answer = add_bing_links_to_brackets(answer)
+            return answer, len(user_input.split()), len(answer.split())
+        else:
+            print(f"[FALLBACK] マッチしませんでした")
+            fallback_msg = (
+                "申し訳ございません。現在、エンベディングシステムが利用できないため、"
+                "簡易検索を行いましたが、適切な回答が見つかりませんでした。\n"
+                "スタッフにお問い合わせください。"
+            )
+            return fallback_msg, len(user_input.split()), len(fallback_msg.split())
+            
+    except Exception as e:
+        print(f"[FALLBACK] キーワード検索エラー: {e}")
+        error_msg = "検索処理でエラーが発生しました。スタッフにお問い合わせください。"
+        return error_msg, 0, 0
+
+
 def _preserve_japanese_links_in_translation(original_text: str, translated_text: str) -> str:
     """
     翻訳された回答の中で、日本語の詳細情報リンクを保持する
@@ -305,55 +367,195 @@ def _preserve_japanese_links_in_translation(original_text: str, translated_text:
 def _is_restaurant_query(query: str) -> bool:
     """
     質問がレストラン・グルメ関連かを判定
+    アレルギーや健康関連の文脈がある場合は除外する
     """
+    query_lower = query.lower()
+    
+    # アレルギー・健康関連キーワードがある場合は除外
+    allergy_keywords = [
+        "アレルギー", "アレルギ", "allergy", "allergies", "allergic",
+        "알레르기", "过敏", "過敏", "健康", "health", "医療", "medical",
+        "病気", "illness", "体調", "condition"
+    ]
+    
+    # アレルギー・健康関連の文脈がある場合はレストラン検索対象外
+    if any(keyword in query_lower for keyword in allergy_keywords):
+        return False
+    
+    # レストラン・グルメ関連キーワード
     restaurant_keywords = [
-        "レストラン", "食事", "グルメ", "ランチ", "ディナー", "飲食", "料理", 
+        "レストラン", "グルメ", "ランチ", "ディナー", "飲食", "料理", 
         "カフェ", "居酒屋", "食べ物", "美味しい", "おすすめ", "食べる",
-        "restaurant", "food", "eat", "dinner", "lunch", "cafe", "gourmet",
+        "restaurant", "eat", "dinner", "lunch", "cafe", "gourmet",
         "맛집", "음식", "식당", "레스토랑", "카페", "먹다",
         "餐厅", "美食", "吃", "料理", "咖啡厅"
     ]
-    return any(keyword in query.lower() for keyword in restaurant_keywords)
+    
+    # 単純な「food」は除外し、より具体的なレストラン関連キーワードのみ対象とする
+    # 「食事」も宿泊施設のサービスの一部なのでレストラン検索対象外とする
+    restaurant_specific_keywords = [
+        "レストラン", "グルメ", "ランチ", "ディナー", "カフェ", "居酒屋", 
+        "美味しい", "おすすめ", "食べる",
+        "restaurant", "eat", "dinner", "lunch", "cafe", "gourmet",
+        "맛집", "식당", "레스토랑", "카페", "먹다",
+        "餐厅", "美食", "吃", "咖啡厅"
+    ]
+    
+    return any(keyword in query_lower for keyword in restaurant_specific_keywords)
 
 
 def _generate_gnavi_response(query: str, user_lang: str) -> str:
     """
-    ぐるなび検索案内の多言語対応レスポンスを生成
+    Google Places APIを使用してレストラン情報を検索し、10件表示する
+    """
+    try:
+        # Google Places Serviceを初期化
+        places_service = GooglePlacesService()
+        
+        # クエリから地域名を抽出（デフォルトは「別府」）
+        location = _extract_location_from_query(query)
+        print(f"[RESTAURANT_SEARCH] 抽出された地域: {location}")
+        
+        # レストラン検索実行
+        restaurants = places_service.search_restaurants(location, "レストラン", user_lang)
+        
+        if restaurants:
+            # Google Places APIの結果をフォーマット
+            formatted_response = format_google_places_response(
+                restaurants, location, "レストラン", user_lang
+            )
+            
+            # 追加の詳細情報リンクを付加
+            additional_info = _get_additional_restaurant_info(location, user_lang)
+            
+            return f"{formatted_response}\n\n{additional_info}"
+        else:
+            # フォールバック: 従来のぐるなびリンク
+            return _generate_fallback_restaurant_response(location, user_lang)
+            
+    except Exception as e:
+        print(f"[RESTAURANT_SEARCH] エラー: {e}")
+        # エラー時は従来のぐるなびリンクにフォールバック
+        return _generate_fallback_restaurant_response("別府", user_lang)
+
+
+def _extract_location_from_query(query: str) -> str:
+    """
+    クエリから地域名を抽出する（多言語対応）
+    """
+    # 地域名のパターンマッチング（日本語・英語・韓国語・中国語）
+    location_patterns = [
+        # 九州の主要都市
+        (r'別府|別府市|Beppu', '別府'),
+        (r'大分|大分市|Oita', '大分'), 
+        (r'湯布院|由布院|Yufuin', '湯布院'),
+        (r'福岡|博多|Fukuoka|Hakata', '福岡'),
+        (r'熊本|Kumamoto', '熊本'),
+        (r'鹿児島|Kagoshima', '鹿児島'),
+        (r'長崎|Nagasaki', '長崎'),
+        (r'佐賀|Saga', '佐賀'),
+        (r'宮崎|Miyazaki', '宮崎'),
+        (r'沖縄|Okinawa', '沖縄'),
+        
+        # 関西
+        (r'京都|京都市|Kyoto', '京都'),
+        (r'大阪|大阪市|Osaka', '大阪'),
+        (r'神戸|Kobe', '神戸'),
+        (r'奈良|Nara', '奈良'),
+        
+        # 関東  
+        (r'東京|Tokyo', '東京'),
+        (r'横浜|Yokohama', '横浜'),
+        (r'千葉|Chiba', '千葉'),
+        (r'埼玉|Saitama', '埼玉'),
+        
+        # その他主要都市
+        (r'名古屋|Nagoya', '名古屋'),
+        (r'金沢|Kanazawa', '金沢'),
+        (r'札幌|Sapporo', '札幌'),
+        (r'仙台|Sendai', '仙台'),
+        
+        # 韓国・中国語の主要都市
+        (r'서울|Seoul|首尔', 'ソウル'),
+        (r'부산|Busan|釜山', '釜山'),
+        (r'도쿄|东京', '東京'),
+        (r'오사카|大阪', '大阪'),
+        (r'교토|京都', '京都')
+    ]
+    
+    # 大文字小文字を区別しない検索
+    query_lower = query.lower()
+    
+    for pattern, location_name in location_patterns:
+        if re.search(pattern, query_lower, re.IGNORECASE):
+            print(f"[LOCATION_EXTRACT] パターン '{pattern}' が '{query}' でマッチ → '{location_name}'")
+            return location_name
+    
+    print(f"[LOCATION_EXTRACT] 地域名が見つからなかったため、デフォルトの '別府' を使用")
+    # デフォルトは「別府」
+    return "別府"
+
+
+def _get_additional_restaurant_info(location: str, user_lang: str) -> str:
+    """
+    追加のレストラン情報リンクを生成
+    """
+    # ぐるなび検索URL
+    gnavi_url = f"https://r.gnavi.co.jp/area/jp/rs/?fwp={urllib.parse.quote(location)}"
+    
+    # 食べログ検索URL  
+    tabelog_url = f"https://tabelog.com/{location}/"
+    
+    # 多言語対応のラベル
+    labels = {
+        "ja": {
+            "detail_info": "📍 詳細情報:",
+            "gnavi": "🍽️ グルメ情報（ぐるなび）",
+            "tabelog": "⭐ レストラン口コミ（食べログ）",
+            "footer": "💡 地元の美味しいお店をお探しでしたら、フロントスタッフにもお気軽にお声がけください！"
+        },
+        "en": {
+            "detail_info": "📍 Detailed Information:",
+            "gnavi": "🍽️ Gourmet Information (Gurunavi)",
+            "tabelog": "⭐ Restaurant Reviews (Tabelog)",
+            "footer": "💡 If you're looking for delicious local restaurants, please feel free to ask our front desk staff!"
+        },
+        "ko": {
+            "detail_info": "📍 상세 정보:",
+            "gnavi": "🍽️ 맛집 정보 (구루나비)",
+            "tabelog": "⭐ 레스토랑 리뷰 (타베로그)",
+            "footer": "💡 현지 맛집을 찾고 계신다면, 프론트 직원에게 언제든지 문의해주세요!"
+        },
+        "zh": {
+            "detail_info": "📍 详细信息:",
+            "gnavi": "🍽️ 美食信息 (GURUNAVI)",
+            "tabelog": "⭐ 餐厅评价 (食べログ)",
+            "footer": "💡 如需寻找当地美食，请随时向前台工作人员咨询！"
+        }
+    }
+    
+    lang_labels = labels.get(user_lang, labels["ja"])
+    
+    return f"""{lang_labels['detail_info']}
+• [{lang_labels['gnavi']}]({gnavi_url})
+• [{lang_labels['tabelog']}]({tabelog_url})
+
+{lang_labels['footer']}"""
+
+
+def _generate_fallback_restaurant_response(location: str, user_lang: str) -> str:
+    """
+    Google Places APIが利用できない場合のフォールバック レスポンス
     """
     # デフォルトの案内文
     default_responses = {
-        "ja": "周辺のおすすめレストランはこちらです。以下のリンクをご参照ください。",
-        "en": "Here are recommended restaurants in the area. Please refer to the link below.",
-        "ko": "주변 추천 레스토랑은 여기 있습니다. 아래 링크를 참조해주세요.",
-        "zh": "这里是周边推荐餐厅。请参考以下链接。"
+        "ja": f"{location}のレストラン情報をお探しですね。以下のリンクから詳細情報をご確認いただけます。",
+        "en": f"Looking for restaurant information in {location}. Please check the links below for detailed information.",
+        "ko": f"{location}의 레스토랑 정보를 찾고 계시는군요. 아래 링크에서 자세한 정보를 확인하실 수 있습니다.",
+        "zh": f"正在寻找{location}的餐厅信息。请通过以下链接查看详细信息。"
     }
     
     base_text = default_responses.get(user_lang, default_responses["ja"])
+    additional_info = _get_additional_restaurant_info(location, user_lang)
     
-    # OpenAI APIが利用可能な場合は翻訳を試行
-    if openai.api_key:
-        try:
-            language_instruction = {
-                "ja": "次の文章を日本語で自然に出力してください。",
-                "en": "Please output the following sentence naturally in English.",
-                "ko": "다음 문장을 자연스러운 한국어로 출력해주세요.",
-                "zh": "请用自然的中文输出以下句子。"
-            }.get(user_lang, "Please output the following sentence naturally in English.")
-            
-            prompt = f"{language_instruction}\n\n{base_text}"
-            
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                max_tokens=100
-            )
-            base_text = response['choices'][0]['message']['content']
-        except Exception as e:
-            print(f"翻訳エラー: {e}")
-    
-    # ぐるなび検索URL生成（クエリから場所を抽出または既定値を使用）
-    location_param = "レストラン"
-    gnavi_url = f"https://www.gnavi.co.jp/search/k/?word={urllib.parse.quote(location_param)}"
-    
-    return f"**{base_text}**\n\n👉 [ぐるなびでレストランを見る]({gnavi_url})"
+    return f"{base_text}\n\n{additional_info}"

@@ -164,131 +164,31 @@ def create_unique_company_id(base_id, existing_ids):
     return fallback_id
 
 
-def create_company_folder_structure(company_id, company_name, password, email, location_info=None):
+# 削除済み: create_company_folder_structure() 
+# データベース管理に移行したため、フォルダ作成機能は廃止
+def create_company_folder_structure_deprecated(company_id, company_name, password, email, location_info=None):
     """
-    会社用のフォルダ構造とファイルを作成する
-    
-    Args:
-        company_id (str): 会社ID
-        company_name (str): 会社名
-        password (str): パスワード
-        email (str): メールアドレス
-        location_info (dict): 住所情報（postal_code, prefecture, city, address）
-        
-    Returns:
-        bool: 作成成功したかどうか
+    廃止: データベース管理に移行したため、フォルダ作成機能は使用されません
+    互換性のためのスタブ関数
     """
+    # データベースに会社情報を保存するのみ
     try:
-        # 会社フォルダのパスを作成（data/companies/{company_id}）
-        companies_base_dir = os.path.join("data", "companies")
-        company_folder = os.path.join(companies_base_dir, company_id)
-        
-        # companiesディレクトリが存在しない場合は作成
-        if not os.path.exists(companies_base_dir):
-            os.makedirs(companies_base_dir)
-            print(f"[BASE DIR CREATED] {companies_base_dir}")
-        
-        # 会社フォルダが存在しない場合は作成
-        if not os.path.exists(company_folder):
-            os.makedirs(company_folder)
-            print(f"[COMPANY FOLDER CREATED] {company_folder}")
-        
-        # 1. FAQ用のCSVファイルを作成
-        faq_csv_path = os.path.join(company_folder, "faq.csv")
-        if not os.path.exists(faq_csv_path):
-            # サンプルFAQデータを作成
-            sample_faq = {
-                "question": [
-                    f"{company_name}について教えてください",
-                    "お問い合わせ方法を教えてください",
-                    "営業時間はいつですか？",
-                    "サービスの詳細について知りたいです",
-                    "料金体系について教えてください"
-                ],
-                "answer": [
-                    f"ようこそ{company_name}のFAQシステムへ！こちらでは、よくある質問にお答えしています。",
-                    "お問い合わせは、メールまたはお電話にて承っております。詳細は担当者までお尋ねください。",
-                    "営業時間は平日9:00〜18:00となっております。土日祝日は休業です。",
-                    "サービスの詳細については、担当者が詳しくご説明いたします。お気軽にお問い合わせください。",
-                    "料金体系については、ご利用内容に応じて異なります。詳しくはお見積りをお出しいたします。"
-                ]
-            }
-            
-            pd.DataFrame(sample_faq).to_csv(faq_csv_path, index=False, encoding='utf-8')
-            print(f"[FILE CREATED] {faq_csv_path}")
-        
-        # 2. エンベディング結果ファイルを作成（空のpklファイル）
-        embeddings_path = os.path.join(company_folder, "faq_with_embeddings.pkl")
-        if not os.path.exists(embeddings_path):
-            # 空のエンベディングデータを作成
-            empty_embeddings = {
-                "questions": [],
-                "answers": [],
-                "embeddings": np.array([])
-            }
-            
-            with open(embeddings_path, 'wb') as f:
-                pickle.dump(empty_embeddings, f)
-            print(f"[FILE CREATED] {embeddings_path}")
-        
-        # 3. FAQ検索履歴ファイルを作成
-        history_csv_path = os.path.join(company_folder, "history.csv")
-        if not os.path.exists(history_csv_path):
-            # 履歴CSVのヘッダーを作成
-            history_headers = {
-                "timestamp": [],
-                "question": [],
-                "answer": [],
-                "input_tokens": [],
-                "output_tokens": [],
-                "user_info": [],
-                "company_id": []
-            }
-            
-            pd.DataFrame(history_headers).to_csv(history_csv_path, index=False, encoding='utf-8')
-            print(f"[FILE CREATED] {history_csv_path}")
-        
-        # 4. 会社設定ファイルを作成（JSON）
-        # settings_path = os.path.join(company_folder, "settings.json")
-        # if not os.path.exists(settings_path):
-        #     settings = {
-        #         "company_id": company_id,
-        #         "company_name": company_name,
-        #         "created_at": datetime.now().isoformat(),
-        #         "faq_count": 5,  # 初期FAQの数
-        #         "last_updated": datetime.now().isoformat(),
-        #         "admins": {
-        #             "admin": {
-        #                 "password": hash_password(password),
-        #                 "email": email,
-        #                 "created_at": datetime.now().isoformat()
-        #             }
-        #         }
-        #     }
-            
-        #     with open(settings_path, 'w', encoding='utf-8') as f:
-        #         json.dump(settings, f, ensure_ascii=False, indent=2)
-        #     print(f"[FILE CREATED] {settings_path}")
-        
-        # 5. データベースに会社情報と住所情報を保存
         from core.database import save_company_to_db
         db_success = save_company_to_db(
             company_id=company_id,
             company_name=company_name,
             created_at=datetime.now().isoformat(),
-            faq_count=5,  # 初期FAQの数
+            faq_count=0,  # 初期状態
             location_info=location_info
         )
         
         if db_success:
             print(f"[DATABASE] 会社情報をデータベースに保存しました: {company_id}")
+            return True
         else:
-            print(f"[DATABASE WARNING] 会社情報のデータベース保存に失敗しました: {company_id}")
-        
-        print(f"[SUCCESS] 会社フォルダ構造を作成しました: data/companies/{company_id}")
-        return True
+            print(f"[DATABASE ERROR] 会社情報のデータベース保存に失敗しました: {company_id}")
+            return False
         
     except Exception as e:
-        UnifiedConfig.log_error("会社フォルダ構造の作成に失敗しました")
-        UnifiedConfig.log_debug(f"エラー詳細: {e}")
+        print(f"[ERROR] 会社作成エラー: {e}")
         return False

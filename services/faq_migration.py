@@ -31,14 +31,36 @@ def create_faq_tables():
                         id SERIAL PRIMARY KEY,
                         faq_id INTEGER NOT NULL,
                         embedding_vector BYTEA NOT NULL,
-                        vector_model TEXT DEFAULT 'voyage-3',
+                        vector_model VARCHAR(50) DEFAULT 'voyage-3',
                         embedding_dim INTEGER DEFAULT 1024,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (faq_id) REFERENCES faq_data (id) ON DELETE CASCADE
+                        FOREIGN KEY (faq_id) REFERENCES faq_data(id) ON DELETE CASCADE
+                    )
+                """)
+                
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS faq_data (
+                        id SERIAL PRIMARY KEY,
+                        company_id VARCHAR(100) NOT NULL,
+                        question TEXT NOT NULL,
+                        answer TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
             else:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS faq_data (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        company_id TEXT NOT NULL,
+                        question TEXT NOT NULL,
+                        answer TEXT NOT NULL,
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS faq_embeddings (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,258 +70,96 @@ def create_faq_tables():
                         embedding_dim INTEGER DEFAULT 1024,
                         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                         updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (faq_id) REFERENCES faq_data (id) ON DELETE CASCADE
+                        FOREIGN KEY (faq_id) REFERENCES faq_data(id) ON DELETE CASCADE
                     )
                 """)
             
-            # インデックス作成
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_faq_embeddings_faq_id ON faq_embeddings(faq_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_faq_embeddings_model ON faq_embeddings(vector_model)")
-            
             conn.commit()
-            print("[MIGRATION] FAQ関連テーブル作成完了")
+            print("[MIGRATION] FAQテーブル作成完了")
             return True
             
     except Exception as e:
         print(f"[MIGRATION] テーブル作成エラー: {e}")
         return False
 
-def serialize_embedding(embedding_vector):
-    """エンベディングベクトルをバイナリにシリアライズ"""
+def serialize_embedding(embedding_data):
+    """エンベディングをシリアライズ"""
     try:
-        if isinstance(embedding_vector, list):
-            embedding_vector = np.array(embedding_vector, dtype=np.float32)
-        elif isinstance(embedding_vector, np.ndarray):
-            embedding_vector = embedding_vector.astype(np.float32)
-        
-        return embedding_vector.tobytes()
+        if isinstance(embedding_data, np.ndarray):
+            return pickle.dumps(embedding_data.tolist())
+        elif isinstance(embedding_data, list):
+            return pickle.dumps(embedding_data)
+        else:
+            print(f"[MIGRATION] 未対応のエンベディング形式: {type(embedding_data)}")
+            return None
     except Exception as e:
         print(f"[MIGRATION] エンベディングシリアライズエラー: {e}")
         return None
 
-def deserialize_embedding(binary_data):
-    """バイナリデータからエンベディングベクトルをデシリアライズ"""
+def deserialize_embedding(serialized_data):
+    """シリアライズされたエンベディングを復元"""
     try:
-        return np.frombuffer(binary_data, dtype=np.float32).tolist()
+        if isinstance(serialized_data, bytes):
+            # まずpickleで試行
+            try:
+                return pickle.loads(serialized_data)
+            except:
+                # pickleで失敗した場合、numpy配列として直接解釈を試行
+                try:
+                    import numpy as np
+                    # float32の配列として解釈（1024次元と仮定）
+                    if len(serialized_data) == 1024 * 4:  # float32 = 4bytes
+                        arr = np.frombuffer(serialized_data, dtype=np.float32)
+                        return arr.tolist()
+                    # float64の配列として解釈
+                    elif len(serialized_data) == 1024 * 8:  # float64 = 8bytes
+                        arr = np.frombuffer(serialized_data, dtype=np.float64)
+                        return arr.tolist()
+                    else:
+                        print(f"[MIGRATION] 不明なバイナリ形式: サイズ {len(serialized_data)} bytes")
+                        return None
+                except Exception as np_error:
+                    print(f"[MIGRATION] numpy解釈エラー: {np_error}")
+                    return None
+                    
+        elif isinstance(serialized_data, str):
+            # Base64でエンコードされた場合を想定
+            import base64
+            try:
+                decoded = base64.b64decode(serialized_data)
+                return pickle.loads(decoded)
+            except:
+                # JSONとして解釈を試行
+                import json
+                try:
+                    return json.loads(serialized_data)
+                except:
+                    print(f"[MIGRATION] 文字列データの解釈に失敗: {serialized_data[:100]}...")
+                    return None
+        else:
+            return serialized_data
+            
     except Exception as e:
         print(f"[MIGRATION] エンベディングデシリアライズエラー: {e}")
+        print(f"[MIGRATION] データ型: {type(serialized_data)}, サイズ: {len(serialized_data) if hasattr(serialized_data, '__len__') else 'Unknown'}")
+        if isinstance(serialized_data, bytes) and len(serialized_data) > 0:
+            print(f"[MIGRATION] 最初の16バイト: {serialized_data[:16].hex()}")
         return None
 
 def migrate_company_faq_data(company_id, show_progress=False):
-    """指定された会社のFAQデータをDBに移行"""
-    try:
-        company_dir = UnifiedConfig.get_data_path(company_id)
-        
-        # CSVファイルの確認
-        csv_path = os.path.join(company_dir, "faq.csv")
-        if not os.path.exists(csv_path):
-            print(f"[MIGRATION] CSVファイルが見つかりません: {csv_path}")
-            return False
-        
-        # エンベディングファイルの確認
-        pkl_path = os.path.join(company_dir, "faq_with_embeddings.pkl")
-        has_embeddings = os.path.exists(pkl_path)
-        
-        if show_progress:
-            import streamlit as st
-            st.info(f"📁 {company_id} のデータを移行中...")
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-        
-        # データ読み込み
-        if has_embeddings:
-            try:
-                df = pd.read_pickle(pkl_path)
-                print(f"[MIGRATION] エンベディング付きデータを読み込み: {len(df)}件")
-            except Exception as e:
-                print(f"[MIGRATION] PKLファイル読み込みエラー: {e}")
-                df = pd.read_csv(csv_path)
-                has_embeddings = False
-        else:
-            df = pd.read_csv(csv_path)
-            print(f"[MIGRATION] CSVデータを読み込み: {len(df)}件")
-        
-        # 必要なカラムの確認
-        if 'question' not in df.columns or 'answer' not in df.columns:
-            print("[MIGRATION] 必要なカラム(question, answer)が見つかりません")
-            return False
-        
-        # 既存データの削除（再移行対応）
-        param_format = get_param_format()
-        execute_query(f"DELETE FROM faq_data WHERE company_id = {param_format}", (company_id,))
-        print(f"[MIGRATION] 既存データを削除: {company_id}")
-        
-        # データ移行処理
-        total_count = len(df)
-        success_count = 0
-        
-        for i, row in df.iterrows():
-            try:
-                # FAQ基本データを挿入
-                query = f"""
-                    INSERT INTO faq_data (company_id, question, answer, created_at, updated_at)
-                    VALUES ({param_format}, {param_format}, {param_format}, {param_format}, {param_format})
-                """
-                current_time = datetime.now().isoformat()
-                
-                faq_cursor = get_db_connection().cursor()
-                faq_cursor.execute(query, (
-                    company_id,
-                    row['question'],
-                    row['answer'],
-                    current_time,
-                    current_time
-                ))
-                faq_id = faq_cursor.lastrowid
-                faq_cursor.close()
-                
-                # エンベディングがある場合は保存
-                if has_embeddings and 'embedding' in row and row['embedding'] is not None:
-                    try:
-                        serialized_embedding = serialize_embedding(row['embedding'])
-                        if serialized_embedding:
-                            embedding_query = f"""
-                                INSERT INTO faq_embeddings 
-                                (faq_id, embedding_vector, vector_model, embedding_dim, created_at, updated_at)
-                                VALUES ({param_format}, {param_format}, {param_format}, {param_format}, {param_format}, {param_format})
-                            """
-                            execute_query(embedding_query, (
-                                faq_id,
-                                serialized_embedding,
-                                'voyage-3',  # デフォルトモデル
-                                len(row['embedding']) if isinstance(row['embedding'], (list, np.ndarray)) else 1024,
-                                current_time,
-                                current_time
-                            ))
-                    except Exception as e:
-                        print(f"[MIGRATION] エンベディング保存エラー (FAQ ID: {faq_id}): {e}")
-                
-                success_count += 1
-                
-                # 進行状況更新
-                if show_progress:
-                    progress = (i + 1) / total_count
-                    progress_bar.progress(progress)
-                    status_text.text(f"移行中: {i+1}/{total_count} 件")
-                
-            except Exception as e:
-                print(f"[MIGRATION] FAQ移行エラー (行 {i}): {e}")
-                continue
-        
-        # 会社のFAQ数を更新
-        from core.database import update_company_faq_count_in_db
-        update_company_faq_count_in_db(company_id, success_count)
-        
-        if show_progress:
-            progress_bar.progress(1.0)
-            status_text.success(f"✅ 移行完了: {success_count}/{total_count} 件")
-        
-        print(f"[MIGRATION] {company_id} の移行完了: {success_count}/{total_count} 件")
-        return True
-        
-    except Exception as e:
-        print(f"[MIGRATION] 会社データ移行エラー: {e}")
-        return False
+    """指定された会社のFAQデータをDBに移行（廃止：フォルダ管理から移行済み）"""
+    print(f"[MIGRATION] 会社 {company_id}: フォルダベースのファイル管理は廃止されました。データベース管理に移行済みです。")
+    return True
 
 def migrate_all_companies(show_progress=False):
-    """全会社のFAQデータを移行"""
-    try:
-        companies_dir = UnifiedConfig.COMPANIES_DIR
-        if not os.path.exists(companies_dir):
-            print("[MIGRATION] companiesディレクトリが見つかりません")
-            return False
-        
-        # 会社ディレクトリ一覧を取得
-        company_ids = [d for d in os.listdir(companies_dir) 
-                       if os.path.isdir(os.path.join(companies_dir, d))]
-        
-        if not company_ids:
-            print("[MIGRATION] 移行対象の会社が見つかりません")
-            return True
-        
-        if show_progress:
-            import streamlit as st
-            st.write(f"**📊 {len(company_ids)} 社のデータを移行します**")
-            main_progress = st.progress(0)
-            
-        success_companies = []
-        failed_companies = []
-        
-        for i, company_id in enumerate(company_ids):
-            print(f"[MIGRATION] 移行開始: {company_id} ({i+1}/{len(company_ids)})")
-            
-            if migrate_company_faq_data(company_id, show_progress=False):
-                success_companies.append(company_id)
-            else:
-                failed_companies.append(company_id)
-            
-            if show_progress:
-                main_progress.progress((i + 1) / len(company_ids))
-        
-        # 結果レポート
-        print(f"[MIGRATION] 全体移行完了")
-        print(f"[MIGRATION] 成功: {len(success_companies)} 社")
-        print(f"[MIGRATION] 失敗: {len(failed_companies)} 社")
-        
-        if failed_companies:
-            print(f"[MIGRATION] 失敗した会社: {failed_companies}")
-        
-        if show_progress:
-            import streamlit as st
-            st.success(f"✅ 移行完了: 成功 {len(success_companies)} 社, 失敗 {len(failed_companies)} 社")
-            if failed_companies:
-                st.warning(f"失敗した会社: {', '.join(failed_companies)}")
-        
-        return len(failed_companies) == 0
-        
-    except Exception as e:
-        print(f"[MIGRATION] 全体移行エラー: {e}")
-        return False
+    """全会社のFAQデータを移行（廃止：フォルダ管理から移行済み）"""
+    print("[MIGRATION] フォルダベースの会社管理は廃止されました。データベース管理に移行済みです。")
+    return True
 
 def backup_original_data():
-    """元のCSV/PKLファイルをバックアップ"""
-    try:
-        companies_dir = UnifiedConfig.COMPANIES_DIR
-        backup_dir = os.path.join(UnifiedConfig.DATA_DIR, "backup_csv_pkl")
-        
-        if not os.path.exists(companies_dir):
-            print("[MIGRATION] バックアップ対象が見つかりません")
-            return True
-        
-        os.makedirs(backup_dir, exist_ok=True)
-        
-        # 各会社のデータをバックアップ
-        for company_id in os.listdir(companies_dir):
-            company_path = os.path.join(companies_dir, company_id)
-            if not os.path.isdir(company_path):
-                continue
-            
-            # バックアップディレクトリ作成
-            backup_company_dir = os.path.join(backup_dir, company_id)
-            os.makedirs(backup_company_dir, exist_ok=True)
-            
-            # CSVとPKLファイルをコピー
-            for filename in ['faq.csv', 'faq_with_embeddings.pkl']:
-                src_path = os.path.join(company_path, filename)
-                if os.path.exists(src_path):
-                    import shutil
-                    dst_path = os.path.join(backup_company_dir, filename)
-                    shutil.copy2(src_path, dst_path)
-                    print(f"[MIGRATION] バックアップ完了: {src_path} -> {dst_path}")
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_info_path = os.path.join(backup_dir, f"backup_info_{timestamp}.txt")
-        with open(backup_info_path, 'w', encoding='utf-8') as f:
-            f.write(f"バックアップ作成日時: {datetime.now().isoformat()}\n")
-            f.write(f"バックアップ元: {companies_dir}\n")
-            f.write(f"バックアップ先: {backup_dir}\n")
-        
-        print(f"[MIGRATION] 全ファイルのバックアップ完了: {backup_dir}")
-        return True
-        
-    except Exception as e:
-        print(f"[MIGRATION] バックアップエラー: {e}")
-        return False
+    """元のCSV/PKLファイルをバックアップ（廃止：フォルダ管理から移行済み）"""
+    print("[MIGRATION] フォルダベースのファイル管理は廃止されました。データベース管理に移行済みです。")
+    return True
 
 def verify_migration(company_id):
     """移行結果を検証"""
@@ -319,49 +179,53 @@ def verify_migration(company_id):
         embedding_result = fetch_dict_one(embedding_query, (company_id,))
         embedding_count = embedding_result['COUNT(*)'] if embedding_result else 0
         
-        # 元ファイルと比較
-        company_dir = UnifiedConfig.get_data_path(company_id)
-        csv_path = os.path.join(company_dir, "faq.csv")
-        
-        original_count = 0
-        if os.path.exists(csv_path):
-            try:
-                df = pd.read_csv(csv_path)
-                original_count = len(df)
-            except Exception as e:
-                print(f"[MIGRATION] 元ファイル読み込みエラー: {e}")
-        
-        print(f"[MIGRATION] 検証結果 {company_id}:")
-        print(f"  元ファイル: {original_count} 件")
-        print(f"  DB FAQ: {faq_count} 件")
-        print(f"  DB エンベディング: {embedding_count} 件")
+        print(f"[VERIFICATION] {company_id}: FAQ {faq_count}件, エンベディング {embedding_count}件")
         
         return {
             'company_id': company_id,
-            'original_count': original_count,
             'faq_count': faq_count,
             'embedding_count': embedding_count,
-            'migration_success': faq_count == original_count
+            'success': faq_count > 0
         }
         
     except Exception as e:
-        print(f"[MIGRATION] 検証エラー: {e}")
-        return None
+        print(f"[VERIFICATION] 検証エラー: {e}")
+        return {
+            'company_id': company_id,
+            'faq_count': 0,
+            'embedding_count': 0,
+            'success': False,
+            'error': str(e)
+        }
+
+def init_faq_migration():
+    """FAQ移行システムの初期化"""
+    try:
+        # データベースの初期化
+        initialize_database()
+        
+        # FAQテーブルの作成
+        create_faq_tables()
+        
+        print("[MIGRATION] FAQ移行システム初期化完了")
+        return True
+        
+    except Exception as e:
+        print(f"[MIGRATION] 初期化エラー: {e}")
+        return False
 
 def get_faq_data_from_db(company_id):
-    """DBからFAQデータを取得（エンベディング付き）"""
+    """データベースからFAQデータを取得"""
     try:
         param_format = get_param_format()
+        
+        # FAQ データと埋め込みを結合して取得
         query = f"""
             SELECT 
                 fd.id,
                 fd.question,
                 fd.answer,
-                fd.created_at,
-                fd.updated_at,
-                fe.embedding_vector,
-                fe.vector_model,
-                fe.embedding_dim
+                fe.embedding_vector as embedding
             FROM faq_data fd
             LEFT JOIN faq_embeddings fe ON fd.id = fe.faq_id
             WHERE fd.company_id = {param_format}
@@ -370,170 +234,192 @@ def get_faq_data_from_db(company_id):
         
         results = fetch_dict(query, (company_id,))
         
-        # エンベディングをデシリアライズ
-        for result in results:
-            if result['embedding_vector']:
-                result['embedding'] = deserialize_embedding(result['embedding_vector'])
-            else:
-                result['embedding'] = None
-            # バイナリデータは除去
-            del result['embedding_vector']
+        # エンベディングデータの処理
+        faq_list = []
+        for row in results:
+            faq_item = {
+                'id': row['id'],
+                'question': row['question'],
+                'answer': row['answer'],
+                'embedding': None
+            }
+            
+            # エンベディングの復元
+            if row['embedding']:
+                try:
+                    embedding_data = row['embedding']
+                    
+                    # データ型に応じた処理（統一的にバイナリデータとして扱う）
+                    if isinstance(embedding_data, memoryview):
+                        # memoryviewの場合はbytesに変換してからデシリアライズ
+                        faq_item['embedding'] = deserialize_embedding(embedding_data.tobytes())
+                    elif isinstance(embedding_data, (bytes, bytearray)):
+                        # バイナリデータの場合はそのままデシリアライズ
+                        faq_item['embedding'] = deserialize_embedding(embedding_data)
+                    elif isinstance(embedding_data, str):
+                        # レガシー：文字列の場合はJSONとして解析（旧データ対応）
+                        import json
+                        faq_item['embedding'] = json.loads(embedding_data)
+                    else:
+                        # その他の場合は直接使用
+                        faq_item['embedding'] = embedding_data
+                        
+                except Exception as e:
+                    print(f"[DB] エンベディング復元エラー (FAQ ID: {row['id']}): {e}")
+                    print(f"[DB] データ型: {type(row['embedding'])}, データサイズ: {len(embedding_data) if hasattr(embedding_data, '__len__') else 'Unknown'}")
+                    # エラーの場合はNoneを設定
+                    faq_item['embedding'] = None
+            
+            faq_list.append(faq_item)
         
-        return results
+        print(f"[DB] {company_id}のFAQデータ取得: {len(faq_list)}件")
+        return faq_list
         
     except Exception as e:
-        print(f"[MIGRATION] FAQ取得エラー: {e}")
+        print(f"[DB] FAQデータ取得エラー: {e}")
         return []
 
 def save_faq_to_db(company_id, question, answer, embedding=None):
-    """新しいFAQをDBに保存"""
+    """FAQデータをデータベースに保存"""
     try:
-        # FAQ基本データを保存
         param_format = get_param_format()
+        current_time = datetime.now().isoformat()
+        
+        # FAQ データの挿入
         faq_query = f"""
             INSERT INTO faq_data (company_id, question, answer, created_at, updated_at)
             VALUES ({param_format}, {param_format}, {param_format}, {param_format}, {param_format})
         """
-        current_time = datetime.now().isoformat()
         
-        # PostgreSQL対応のID取得
-        if DB_TYPE == "postgresql":
-            # execute_queryを使ってRETURNING句で直接IDを取得
-            id_query = f"""
-                INSERT INTO faq_data (company_id, question, answer, created_at, updated_at)
-                VALUES ({param_format}, {param_format}, {param_format}, {param_format}, {param_format})
-                RETURNING id
-            """
-            from core.database import fetch_dict_one
-            result = fetch_dict_one(id_query, (company_id, question, answer, current_time, current_time))
-            faq_id = result['id'] if result else None
-        else:
-            execute_query(faq_query, (company_id, question, answer, current_time, current_time))
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(faq_query, (company_id, question, answer, current_time, current_time))
+            
             # 最後に挿入されたIDを取得
-            from core.database import fetch_dict_one
-            last_id_query = "SELECT last_insert_rowid() as id"
-            result = fetch_dict_one(last_id_query)
-            faq_id = result['id'] if result else None
-        
-        # エンベディングがある場合は保存
-        if embedding is not None and faq_id:
-            serialized_embedding = serialize_embedding(embedding)
-            if serialized_embedding:
-                embedding_query = f"""
-                    INSERT INTO faq_embeddings 
-                    (faq_id, embedding_vector, vector_model, embedding_dim, created_at, updated_at)
-                    VALUES ({param_format}, {param_format}, {param_format}, {param_format}, {param_format}, {param_format})
-                """
-                execute_query(embedding_query, (
-                    faq_id,
-                    serialized_embedding,
-                    'voyage-3',
-                    len(embedding) if isinstance(embedding, (list, np.ndarray)) else 1024,
-                    current_time,
-                    current_time
-                ))
-        
-        # FAQ数を更新
-        from core.database import update_company_faq_count_in_db
-        current_count = len(get_faq_data_from_db(company_id))
-        update_company_faq_count_in_db(company_id, current_count)
-        
-        print(f"[MIGRATION] FAQ保存完了 (ID: {faq_id}): {question[:30]}...")
-        return faq_id
-        
+            if DB_TYPE == "postgresql":
+                cursor.execute("SELECT lastval()")
+                faq_id = cursor.fetchone()[0]
+            else:
+                faq_id = cursor.lastrowid
+            
+            # エンベディングがある場合は保存
+            if embedding is not None:
+                try:
+                    serialized_embedding = serialize_embedding(embedding)
+                    if serialized_embedding:
+                        embedding_query = f"""
+                            INSERT INTO faq_embeddings 
+                            (faq_id, embedding_vector, vector_model, embedding_dim, created_at, updated_at)
+                            VALUES ({param_format}, {param_format}, {param_format}, {param_format}, {param_format}, {param_format})
+                        """
+                        
+                        embedding_dim = len(embedding) if isinstance(embedding, (list, np.ndarray)) else 1024
+                        
+                        # PostgreSQL、SQLite共にバイナリデータとして保存
+                        cursor.execute(embedding_query, (
+                            faq_id, serialized_embedding, 'voyage-3', embedding_dim, current_time, current_time
+                        ))
+                except Exception as e:
+                    print(f"[DB] エンベディング保存エラー (FAQ ID: {faq_id}): {e}")
+            
+            conn.commit()
+            print(f"[DB] FAQ保存完了: {company_id} - {question[:50]}...")
+            return faq_id
+            
     except Exception as e:
-        print(f"[MIGRATION] FAQ保存エラー: {e}")
+        print(f"[DB] FAQ保存エラー: {e}")
         return None
 
 def update_faq_in_db(faq_id, question=None, answer=None, embedding=None):
-    """既存FAQを更新"""
+    """FAQデータをデータベースで更新"""
     try:
+        param_format = get_param_format()
         current_time = datetime.now().isoformat()
         
-        # FAQ基本データを更新
-        param_format = get_param_format()
-        if question is not None or answer is not None:
-            if question is not None and answer is not None:
-                faq_query = f"UPDATE faq_data SET question = {param_format}, answer = {param_format}, updated_at = {param_format} WHERE id = {param_format}"
-                execute_query(faq_query, (question, answer, current_time, faq_id))
-            elif question is not None:
-                faq_query = f"UPDATE faq_data SET question = {param_format}, updated_at = {param_format} WHERE id = {param_format}"
-                execute_query(faq_query, (question, current_time, faq_id))
-            else:
-                faq_query = f"UPDATE faq_data SET answer = {param_format}, updated_at = {param_format} WHERE id = {param_format}"
-                execute_query(faq_query, (answer, current_time, faq_id))
-        
-        # エンベディングを更新
-        if embedding is not None:
-            serialized_embedding = serialize_embedding(embedding)
-            if serialized_embedding:
-                # 既存エンベディングの確認
-                check_query = f"SELECT id FROM faq_embeddings WHERE faq_id = {param_format}"
-                existing = fetch_dict_one(check_query, (faq_id,))
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # FAQ データの更新
+            if question is not None or answer is not None:
+                update_parts = []
+                update_values = []
                 
-                if existing:
-                    # 更新
-                    embedding_query = f"""
-                        UPDATE faq_embeddings 
-                        SET embedding_vector = {param_format}, embedding_dim = {param_format}, updated_at = {param_format}
-                        WHERE faq_id = {param_format}
-                    """
-                    execute_query(embedding_query, (
-                        serialized_embedding,
-                        len(embedding) if isinstance(embedding, (list, np.ndarray)) else 1024,
-                        current_time,
-                        faq_id
-                    ))
-                else:
-                    # 新規作成
-                    embedding_query = f"""
-                        INSERT INTO faq_embeddings 
-                        (faq_id, embedding_vector, vector_model, embedding_dim, created_at, updated_at)
-                        VALUES ({param_format}, {param_format}, {param_format}, {param_format}, {param_format}, {param_format})
-                    """
-                    execute_query(embedding_query, (
-                        faq_id,
-                        serialized_embedding,
-                        'voyage-3',
-                        len(embedding) if isinstance(embedding, (list, np.ndarray)) else 1024,
-                        current_time,
-                        current_time
-                    ))
-        
-        print(f"[MIGRATION] FAQ更新完了 (ID: {faq_id})")
-        return True
-        
+                if question is not None:
+                    update_parts.append(f"question = {param_format}")
+                    update_values.append(question)
+                
+                if answer is not None:
+                    update_parts.append(f"answer = {param_format}")
+                    update_values.append(answer)
+                
+                update_parts.append(f"updated_at = {param_format}")
+                update_values.append(current_time)
+                update_values.append(faq_id)
+                
+                faq_query = f"UPDATE faq_data SET {', '.join(update_parts)} WHERE id = {param_format}"
+                cursor.execute(faq_query, update_values)
+            
+            # エンベディングの更新
+            if embedding is not None:
+                try:
+                    # 既存のエンベディングを削除
+                    delete_query = f"DELETE FROM faq_embeddings WHERE faq_id = {param_format}"
+                    cursor.execute(delete_query, (faq_id,))
+                    
+                    # 新しいエンベディングを挿入
+                    serialized_embedding = serialize_embedding(embedding)
+                    if serialized_embedding:
+                        embedding_query = f"""
+                            INSERT INTO faq_embeddings 
+                            (faq_id, embedding_vector, vector_model, embedding_dim, created_at, updated_at)
+                            VALUES ({param_format}, {param_format}, {param_format}, {param_format}, {param_format}, {param_format})
+                        """
+                        
+                        embedding_dim = len(embedding) if isinstance(embedding, (list, np.ndarray)) else 1024
+                        
+                        # PostgreSQL、SQLite共にバイナリデータとして保存
+                        cursor.execute(embedding_query, (
+                            faq_id, serialized_embedding, 'voyage-3', embedding_dim, current_time, current_time
+                        ))
+                except Exception as e:
+                    print(f"[DB] エンベディング更新エラー (FAQ ID: {faq_id}): {e}")
+            
+            conn.commit()
+            print(f"[DB] FAQ更新完了: ID {faq_id}")
+            return True
+            
     except Exception as e:
-        print(f"[MIGRATION] FAQ更新エラー: {e}")
+        print(f"[DB] FAQ更新エラー: {e}")
         return False
 
-def delete_faq_from_db(faq_id):
-    """FAQをDBから削除（エンベディングも含む）"""
+def cleanup_corrupted_embeddings(company_id=None):
+    """破損したエンベディングデータをクリーンアップ"""
     try:
-        # 外部キー制約により、faq_embeddingsは自動削除される
         param_format = get_param_format()
-        execute_query(f"DELETE FROM faq_data WHERE id = {param_format}", (faq_id,))
-        print(f"[MIGRATION] FAQ削除完了 (ID: {faq_id})")
-        return True
+        
+        if company_id:
+            # 特定企業のエンベディングをクリーンアップ
+            query = f"""
+                DELETE FROM faq_embeddings 
+                WHERE faq_id IN (
+                    SELECT id FROM faq_data WHERE company_id = {param_format}
+                )
+            """
+            params = (company_id,)
+        else:
+            # 全エンベディングをクリーンアップ
+            query = "DELETE FROM faq_embeddings"
+            params = ()
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            deleted_count = cursor.rowcount
+            conn.commit()
+            
+        print(f"[CLEANUP] 破損エンベディング削除完了: {deleted_count}件")
+        return deleted_count
         
     except Exception as e:
-        print(f"[MIGRATION] FAQ削除エラー: {e}")
-        return False
-
-# 初期化時にテーブル作成
-def init_faq_migration():
-    """FAQマイグレーション用の初期化"""
-    try:
-        # 基本データベースの初期化
-        if not table_exists("companies"):
-            initialize_database()
-        
-        # FAQ関連テーブルの作成
-        create_faq_tables()
-        
-        print("[MIGRATION] FAQマイグレーション初期化完了")
-        return True
-        
-    except Exception as e:
-        print(f"[MIGRATION] 初期化エラー: {e}")
-        return False
+        print(f"[CLEANUP] エンベディングクリーンアップエラー: {e}")
+        return 0

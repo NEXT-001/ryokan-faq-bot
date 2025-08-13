@@ -168,12 +168,24 @@ class EnhancedLanguageDetection:
         if re.search(r'[餐厅信息观光]', text):
             return {'language': 'zh', 'confidence': 0.8, 'method': 'short_simplified_fast'}
         
-        # 英語のみ
-        if re.match(r'^[a-zA-Z\s]+$', text):
-            return {'language': 'en', 'confidence': 0.6, 'method': 'short_english_fast'}
+        # 韓国語チェック
+        if re.search(r'[가-힣]', text):
+            return {'language': 'ko', 'confidence': 0.8, 'method': 'short_korean_fast'}
         
-        # デフォルト
-        return {'language': 'ja', 'confidence': 0.3, 'method': 'short_default_fast'}
+        # 英語チェック（句読点も含む）
+        if re.match(r'^[a-zA-Z\s\?\!\.\,\;\:]+$', text):
+            return {'language': 'en', 'confidence': 0.7, 'method': 'short_english_fast'}
+        
+        # 日本語文字チェック
+        if re.search(r'[あ-んア-ン一-龯]', text):
+            return {'language': 'ja', 'confidence': 0.8, 'method': 'short_japanese_fast'}
+        
+        # 数字のみの場合
+        if re.match(r'^[\d\s\?\!\.\,]+$', text):
+            return {'language': 'en', 'confidence': 0.4, 'method': 'short_numeric_fast'}
+        
+        # デフォルト（英語）
+        return {'language': 'en', 'confidence': 0.3, 'method': 'short_default_fast'}
     
     def _perform_full_analysis_optimized(self, text: str) -> Dict[str, any]:
         """必要最小限の完全分析"""
@@ -211,11 +223,28 @@ class EnhancedLanguageDetection:
         
         # 英語パターン
         english_score = 0.0
-        if re.search(r'\b(tourism|restaurant|food|travel|tourist|attractions|sightseeing|seoul)\b', text.lower()):
+        text_lower = text.lower()
+        
+        # 英語キーワード
+        if re.search(r'\b(tourism|restaurant|food|travel|tourist|attractions|sightseeing|seoul|allergies|allergy|checkin|checkout|time|what|when|where|how|is|are|do|does|can|could|would|should)\b', text_lower):
             english_score += 0.5
+        
         # 英語でよく使われる場所名
         if re.search(r'\b(Seoul|Tokyo|Osaka|Kyoto|Fukuoka)\b', text):
             english_score += 0.3
+            
+        # 英語的な文構造
+        if re.search(r'\b(check-in|check-out|wi-fi|wifi)\b', text_lower):
+            english_score += 0.4
+            
+        # 疑問符がある英語
+        if '?' in text and re.search(r'[a-zA-Z]', text):
+            english_score += 0.3
+            
+        # 純粋に英語文字のみ（スペースと句読点含む）
+        if re.match(r'^[a-zA-Z\s\?\!\.\,\;\:\-]+$', text) and len(text.strip()) > 2:
+            english_score += 0.6
+            
         language_scores['en'] = english_score
         
         # 最高スコアを選択
