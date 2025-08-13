@@ -169,8 +169,10 @@ def admin_dashboard(company_id):
         if is_super:
             company_name = "スーパー管理者"
         else:
-            # usersテーブルのcompany_nameを優先使用
-            company_name = st.session_state.get('company_name', "不明な会社")
+            # セッションから取得を試行、失敗時は動的に取得
+            company_name = st.session_state.get('company_name', None)
+            if not company_name:
+                company_name = get_company_name(company_id) or "不明な会社"
         
         # タイトル表示
         st.title(f"💬 {company_name} - 管理画面")
