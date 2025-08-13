@@ -778,27 +778,14 @@ def faq_management_page():
     with tab1:
         st.subheader("FAQ一覧・編集")
         
-        # 言語フィルター
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            language_options = {
-                "すべての言語": None,
-                "🇯🇵 日本語": "ja",
-                "🇺🇸 英語": "en", 
-                "🇰🇷 韓国語": "ko",
-                "🇨🇳 中国語(簡体)": "zh",      # データベースの実際のコード
-                "🇹🇼 中国語(繁体)": "zh-tw"    # データベースの実際のコード
-            }
-            selected_language = st.selectbox("言語フィルター", list(language_options.keys()))
+        # 言語フィルターを削除 - すべての言語のFAQを表示
+        # FAQは日本語のみのため、言語フィルターは不要
         
-        # データの読み込み
-        df = load_faq_data(company_id, language_options[selected_language])
+        # データの読み込み（すべての言語）
+        df = load_faq_data(company_id, None)
         
         if len(df) == 0:
-            if language_options[selected_language]:
-                st.info(f"{selected_language}のFAQデータがありません。")
-            else:
-                st.info("FAQデータがありません。")
+            st.info("FAQデータがありません。")
         else:
             st.write(f"**{len(df)}件のFAQが見つかりました**")
             
